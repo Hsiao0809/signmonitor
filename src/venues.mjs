@@ -166,6 +166,14 @@ export async function bybitCaptureHour(symbols, hourStart, { untilMs, perConn = 
   return out;
 }
 
+/** Bybit 公開成交檔大小（bytes）；查不到回傳 0 */
+export async function bybitFileSize(sym, ymd) {
+  try {
+    const r = await fetch(`https://public.bybit.com/trading/${sym}/${sym}${ymd}.csv.gz`, { method: 'HEAD', headers: UA, signal: AbortSignal.timeout(15000) });
+    return r.ok ? +(r.headers.get('content-length') || 0) : 0;
+  } catch { return 0; }
+}
+
 export const LIVE_VENUES = Object.keys(VENUES).filter(k => !VENUES[k].archive);
 export const ARCHIVE_VENUES = Object.keys(VENUES).filter(k => VENUES[k].archive);
 

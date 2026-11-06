@@ -18,7 +18,7 @@
 | 每日掃描 | 09:00 後當天第一輪；布局清單等 Bybit 成交檔（約 09:12 公布）出來後，通常 10:00 |
 
 GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於整點才啟動時改評估上一小時，但 Bybit 那一小時會缺（Bybit 只能靠整點即時連線抓）；短線清單與每日掃描會由下一輪自動補上。
-**觸發來源**：GitHub 自己的排程在這個 repo 常常不跑，所以另外由 Cloudflare Worker（`cloudflare/trigger-worker.js`）每小時第 50 分呼叫 GitHub 啟動。兩邊同時觸發也不會重複處理：同一小時只判斷一次，同時間只會有一輪在跑。
+**觸發來源**：GitHub 自己的排程在這個 repo 常常不跑，所以另外由 Cloudflare Worker（`cloudflare/trigger-worker.js`）每小時第 50 分呼叫 GitHub 啟動；同一個 Worker 也提供自選標的網頁。兩邊同時觸發也不會重複處理：同一小時只判斷一次，同時間只會有一輪在跑。
 
 手動執行：Actions → Monitor → Run workflow，`daily` 選 `force` 立刻跑每日掃描。在第 40–59 分執行會等到整點。
 公開 repo 連續 60 天沒有新 commit 時 GitHub 會停用排程；workflow 每週一會自動重新啟用。
@@ -68,9 +68,21 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 沒有做回測。參數在 `src/hourly.mjs` 的 `HOURLY`。
 
+## 自選標的
+
+開啟 Cloudflare Worker 的網址（`signmonitor-trigger.<你的子網域>.workers.dev`）即可新增、移除，需要輸入 Worker 設定的 `ADMIN_PASSWORD`。清單存在 Issue「自選標的」，也可以直接編輯該 Issue。
+
+| 項目 | 自選標的的規則 |
+|---|---|
+| 監控範圍 | 不受流動性下限限制；OKX、Bitget、Bybit 有合約就監控（含 Bybit 加密貨幣） |
+| 盤中爆量門檻 | 同時段 3 倍、近 48 小時 2 倍、每小時成交額 ≥ 2 萬 USDT，通知標【自選】並排最前面 |
+| Bybit 大檔 | BTC、ETH 等成交檔超過 40 MB 的不下載，改用每小時即時記錄累積基準（約 3 天後開始判斷） |
+
+短線清單與布局清單目前不受自選影響。
+
 ## 存放位置
 
-- Issue「短線清單」「布局清單」「盤中爆量」：本文是最新清單與成績，狀態以壓縮形式存在本文最後的隱藏註解，不要手動刪除。每日報告與狀態變化留在留言。
+- Issue「短線清單」「布局清單」「盤中爆量」「自選標的」：本文是最新清單與成績，狀態以壓縮形式存在本文最後的隱藏註解，不要手動刪除。每日報告與狀態變化留在留言。
 - Telegram：需要在 Settings → Secrets and variables → Actions 設定 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。沒設定時只寫 Issue。
 
 ## 檔案

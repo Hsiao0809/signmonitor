@@ -22,7 +22,9 @@ export const HOURLY = {
   dedupHours: 12,
   reAlertMult: 2,
   keepHours: 72,          // Issue 上保留幾小時內的紀錄
-  maxLines: 15
+  maxLines: 15,
+  /* 自選標的：不受流動性下限限制、門檻放寬 */
+  watch: { minSameHourX: 3, minRecentX: 2, floorQvHour: 2e4 }
 };
 
 const H = 3600e3, D = 24 * H;
@@ -61,8 +63,10 @@ export function hourStats(bars, T, cat, cfg = HOURLY) {
   };
 }
 
-export function isAnomaly(st, cat, cfg = HOURLY) {
-  return !!st && st.x1 >= cfg.minSameHourX && st.x2 >= cfg.minRecentX && st.qv >= (cfg.floorQvHour[cat] ?? cfg.floorQvHour.crypto);
+export function isAnomaly(st, cat, cfg = HOURLY, watch = false) {
+  if (!st) return false;
+  if (watch) return st.x1 >= cfg.watch.minSameHourX && st.x2 >= cfg.watch.minRecentX && st.qv >= cfg.watch.floorQvHour;
+  return st.x1 >= cfg.minSameHourX && st.x2 >= cfg.minRecentX && st.qv >= (cfg.floorQvHour[cat] ?? cfg.floorQvHour.crypto);
 }
 
 /**
@@ -74,23 +78,23 @@ export function pickAlerts(state, entries, T, cfg = HOURLY) {
   for (const e of entries) { const a = byBase.get(e.base) || []; a.push(e); byBase.set(e.base, a); }
   const alerts = [];
   for (const e of entries) {
-    if (!isAnomaly(e.stats, e.cat, cfg)) continue;
+    if (!isAnomaly(e.stats, e.cat, cfg, !!e.watch)) continue;
     const key = `${e.venue}:${e.sym}`;
     const prev = state.last[key];
     if (prev && T - prev.t < cfg.dedupHours * H && e.stats.x1 < prev.x1 * cfg.reAlertMult) continue;
     const others = (byBase.get(e.base) || []).filter(o => o.venue !== e.venue);
     const othersX = Object.fromEntries(others.map(o => [o.venue, +o.stats.x1.toFixed(1)]));
-    const spikedOthers = others.filter(o => isAnomaly(o.stats, o.cat, cfg)).map(o => o.venue);
+    const spikedOthers = others.filter(o => isAnomaly(o.stats, o.cat, cfg, !!o.watch)).map(o => o.venue);
     const single = others.length > 0 && others.every(o => o.stats.x1 < cfg.quietX);
     alerts.push({
       t: T, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat,
       x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1), qv: Math.round(e.stats.qv), chg: +(e.stats.chg * 100).toFixed(2),
-      price: e.stats.price,
+      price: e.stats.price, watch: !!e.watch,
       others: othersX, spikedOthers, single
     });
     state.last[key] = { t: T, x1: e.stats.x1 };
   }
-  alerts.sort((a, b) => (b.single - a.single) || b.x1 - a.x1);
+  alerts.sort((a, b) => (b.watch - a.watch) || (b.single - a.single) || b.x1 - a.x1);
   state.recent = [...alerts, ...state.recent].filter(a => T - a.t < cfg.keepHours * H);
   for (const k of Object.keys(state.last)) if (T - state.last[k].t > cfg.keepHours * H) delete state.last[k];
   state.lastHour = T;
@@ -115,7 +119,7 @@ export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY
   if (!alerts.length) return '';
   const L = [`【盤中爆量】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${alerts.length} 檔）`];
   alerts.slice(0, cfg.maxLines).forEach(a => {
-    L.push(`${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★${a.x1}x 同時段／${a.x2}x 近48h`);
+    L.push(`${a.watch ? '【自選】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★${a.x1}x 同時段／${a.x2}x 近48h`);
     L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（1H ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}%）｜成交額 ${money(a.qv)}`);
     L.push(`  ${othersLine(a)}`);
   });
@@ -129,6 +133,7 @@ export function hourlyMarkdown(state, { nowMs, warnings = [], note = '' }, cfg =
   const L = [`# 盤中爆量｜更新 ${tpe(nowMs)} 台灣時間`, ''];
   L.push(`OKX、Bitget、Bybit 三家分開算。剛收盤的 1H K 成交額 ≥ 過去 7 天同一小時中位數 ${cfg.minSameHourX} 倍、≥ 近 48 小時平均 ${cfg.minRecentX} 倍，且達每小時成交額下限（加密 ${cfg.floorQvHour.crypto / 1e4} 萬、股票 ${cfg.floorQvHour.stock / 1e4} 萬、商品 ${cfg.floorQvHour.comm / 1e4} 萬 USDT）就列出。`);
   L.push(`同一家同一檔 ${cfg.dedupHours} 小時內只通知一次，除非量再翻 ${cfg.reAlertMult} 倍。股票合約平日只跟平日比。`);
+  L.push(`【自選】標的不受成交額下限限制，門檻放寬為同時段 ${cfg.watch.minSameHourX} 倍、近 48 小時 ${cfg.watch.minRecentX} 倍。`);
   if (note) { L.push(''); L.push(note); }
   L.push('');
   L.push(`## 最近 ${cfg.keepHours} 小時（${state.recent.length}）`);
@@ -136,7 +141,7 @@ export function hourlyMarkdown(state, { nowMs, warnings = [], note = '' }, cfg =
     L.push('| 時間 | 標的 | 交易所 | 同時段倍數 | 近48h倍數 | 收盤價 | 1H 漲跌 | 成交額 | 其他家同時段 |');
     L.push('|---|---|---|---|---|---|---|---|---|');
     state.recent.slice(0, 200).forEach(a => L.push(
-      `| ${tpe(a.t).slice(5, 16)} | ${alink(a)}［${CAT[a.cat] || a.cat}］ | ${kind(a)} | ${a.x1}x | ${a.x2}x | ${a.price ? fmtP(a.price) : '—'} | ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}% | ${money(a.qv)} | ${othersLine(a)} |`));
+      `| ${tpe(a.t).slice(5, 16)} | ${a.watch ? '【自選】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］ | ${kind(a)} | ${a.x1}x | ${a.x2}x | ${a.price ? fmtP(a.price) : '—'} | ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}% | ${money(a.qv)} | ${othersLine(a)} |`));
   } else L.push('無');
   if (warnings.length) { L.push(''); L.push(`## 資料警告（${warnings.length}）`); warnings.slice(0, 20).forEach(w => L.push(`- ${w}`)); }
   L.push('');

@@ -25,19 +25,23 @@ export function saveCache(file, c) {
   fs.writeFileSync(file, JSON.stringify(c));
 }
 
-/** 整點前先做：三家合約清單、Bybit 股票／商品對照 */
-export async function prepare(cache, warnings) {
-  const lists = {}, refPrice = {}, refCat = {};
+/** 整點前先做：三家合約清單、Bybit 股票／商品對照；watch＝自選代號（一律監控） */
+export async function prepare(cache, warnings, watch = []) {
+  const W = new Set(watch);
+  const lists = {}, refPrice = {}, refCat = {}, cryptoPrice = {};
   for (const ex of ['okx', 'bitget']) {
     try { lists[ex] = await core.EXCHANGES[ex].list(); }
     catch (e) { lists[ex] = []; warnings.push(`${core.EXCHANGES[ex].label} 合約清單失敗（${e.message}）`); }
     for (const m of lists[ex]) {
       const base = m.cat === 'stock' ? m.base.replace(/STOCK$/, '') : m.base;
       if (m.cat !== 'crypto' && refPrice[base] == null) { refPrice[base] = m.price; refCat[base] = m.cat; }
+      if (m.cat === 'crypto' && cryptoPrice[base] == null) cryptoPrice[base] = m.price;
     }
   }
-  const pick = ex => lists[ex].filter(m => !isExcluded(m.base, TCFG) && m.qv24h >= (TCFG.liqFloor[m.cat] ?? TCFG.liqFloor.crypto))
-    .map(m => ({ venue: ex, sym: m.id, base: m.cat === 'stock' ? m.base.replace(/STOCK$/, '') : m.base, cat: m.cat }));
+  const baseOf = m => (m.cat === 'stock' ? m.base.replace(/STOCK$/, '') : m.base);
+  const pick = ex => lists[ex]
+    .filter(m => W.has(baseOf(m)) || (!isExcluded(m.base, TCFG) && m.qv24h >= (TCFG.liqFloor[m.cat] ?? TCFG.liqFloor.crypto)))
+    .map(m => ({ venue: ex, sym: m.id, base: baseOf(m), cat: m.cat, watch: W.has(baseOf(m)) }));
   const okx = pick('okx'), bitget = pick('bitget');
 
   const notStock = new Set(cache.notStock);
@@ -49,8 +53,15 @@ export async function prepare(cache, warnings) {
     if (notStock.has(x.sym)) continue;
     const base = V.stockBaseOf(x.base, refPrice);
     if (!base || isExcluded(base, TCFG)) continue;
-    if (!byBase[base] || x.sym.endsWith('STOCKUSDT')) byBase[base] = { venue: 'bybit', sym: x.sym, base, cat: refCat[base] };
+    if (!byBase[base] || x.sym.endsWith('STOCKUSDT')) byBase[base] = { venue: 'bybit', sym: x.sym, base, cat: refCat[base], watch: W.has(base) };
   }
+  /* 自選的加密貨幣：Bybit 用 BASEUSDT；價格之後跟 OKX／Bitget 比對，排除同名不同幣 */
+  const bySym = new Set(bl.map(x => x.sym));
+  for (const base of W) {
+    if (byBase[base] || !bySym.has(`${base}USDT`) || cryptoPrice[base] == null) continue;
+    byBase[base] = { venue: 'bybit', sym: `${base}USDT`, base, cat: 'crypto', watch: true, cryptoRef: cryptoPrice[base] };
+  }
+  for (const x of Object.values(byBase)) if (x.cryptoRef != null) refPrice[x.base] ??= x.cryptoRef;
   return { okx, bitget, bybit: Object.values(byBase), refPrice };
 }
 
@@ -59,7 +70,16 @@ export async function ensureBybitBaseline(cache, bybit, refPrice, nowMs) {
   const days = [];
   for (let k = 1; k <= BASE_DAYS; k++) days.push(ymd(nowMs - k * D));
   const jobs = [];
+  cache.big ||= [];
+  const big = new Set(cache.big);
+  /* 自選的加密貨幣若成交檔太大（BTC 一天約 90 MB），不下載，改用每小時即時記錄累積基準 */
+  for (const x of bybit.filter(x => x.cat === 'crypto' && !big.has(x.sym) && !(cache.days[x.sym] && Object.keys(cache.days[x.sym]).length))) {
+    const size = await V.bybitFileSize(x.sym, days[0]);
+    if (size > 40e6) { big.add(x.sym); }
+  }
+  cache.big = [...big];
   for (const x of bybit) {
+    if (big.has(x.sym)) continue;
     const dd = cache.days[x.sym] ||= {};
     for (const d of days) {
       const v = dd[d];

@@ -16,6 +16,7 @@ import * as LS from './layout-scan.mjs';
 import * as V from './venues.mjs';
 import * as HR from './hourly.mjs';
 import * as HS from './hourly-scan.mjs';
+import { parseWatch } from './watch.mjs';
 
 T.setPatternScan(core.patternScan);
 const CFG = T.CONFIG;
@@ -111,7 +112,9 @@ async function main() {
   const hw = [];
   let prep = null, capP = Promise.resolve({});
   if (doHourly) {
-    try { prep = await HS.prepare(cache, hw); } catch (e) { hw.push(`盤中爆量準備失敗：${e.message}`); }
+    const watch = parseWatch(a['watch-body'] && fs.existsSync(a['watch-body']) ? fs.readFileSync(a['watch-body'], 'utf8') : '');
+    if (watch.length) console.log(`watch: ${watch.join(',')}`);
+    try { prep = await HS.prepare(cache, hw, watch); } catch (e) { hw.push(`盤中爆量準備失敗：${e.message}`); }
     if (prep && preClose) capP = V.bybitCaptureHour(prep.bybit.map(x => x.sym), targetHour);
     if (prep) { try { await HS.ensureBybitBaseline(cache, prep.bybit, prep.refPrice, startMs); } catch (e) { hw.push(`Bybit 每小時基準更新失敗：${e.message}`); } }
     if (preClose) await new Promise(r => setTimeout(r, Math.max(0, targetHour + HOUR + 20e3 - Date.now())));

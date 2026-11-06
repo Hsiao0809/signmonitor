@@ -57,12 +57,12 @@ jobs:
             const { data: issues } = await github.rest.issues.listForRepo({
               owner, repo, state: "all", labels: label, per_page: 20,
             });
-            async function ensure(title, file, prefix) {
+            async function ensure(title, file, prefix, initial) {
               let issue = issues.find((candidate) => candidate.title === title);
               if (!issue) {
                 const created = await github.rest.issues.create({
                   owner, repo, title, labels: [label],
-                  body: `# ${title}\n\n第一輪執行後會在這裡顯示。`,
+                  body: initial || `# ${title}\n\n第一輪執行後會在這裡顯示。`,
                 });
                 issue = created.data;
               } else if (issue.state !== "open") {
@@ -75,6 +75,8 @@ jobs:
             await ensure("短線清單", "issue-body.md", "");
             await ensure("布局清單", "layout-body.md", "layout_");
             await ensure("盤中爆量", "hourly-body.md", "hourly_");
+            await ensure("自選標的", "watch-body.md", "watch_",
+              "# 自選標的\n\n由 signmonitor 網頁管理；也可以直接編輯下面兩行標記之間的內容，一行一個代號（例如 APP、HYPE）。\n\n<!-- WATCHLIST -->\n<!-- /WATCHLIST -->\n");
 
       - name: Restore Bybit daily cache
         uses: actions/cache/restore@v4
@@ -91,7 +93,7 @@ jobs:
           HOURLY_URL: ${{ steps.issue.outputs.hourly_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md
           --bybit-cache .cache/bybit-daily.json --out out
           --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL"
 
