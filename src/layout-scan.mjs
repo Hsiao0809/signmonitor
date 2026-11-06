@@ -1,8 +1,6 @@
 /* ============================================================
    布局清單的每日資料蒐集：OKX、Bitget 走 API，Bybit 讀公開成交檔並快取
    ============================================================ */
-import fs from 'node:fs';
-import path from 'node:path';
 import * as core from './core.mjs';
 import * as V from './venues.mjs';
 import * as Lay from './layout.mjs';
@@ -13,20 +11,13 @@ const CACHE_DAYS = 30;          // Bybit 快取保留天數（量倍數需要前
 const NEED_DAYS = 22;           // 每檔至少要有幾天 Bybit 資料
 const BYBIT_WAIT_UNTIL_TPE = 13; // 台灣時間 13:00 前若 Bybit 昨天的檔案還沒公布，就等下一輪
 
-function loadCache(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { v: 1, notStock: [], days: {} }; }
-}
-function saveCache(file, c) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(c));
-}
 const ymd = t => new Date(t).toISOString().slice(0, 10);
 
 /**
  * 回傳 { ready, day, candidates, refBarsOf, warnings, counts }
  * ready=false 代表 Bybit 昨日檔案還沒公布，這輪先不處理
  */
-export async function collect(lstate, nowMs, cachePath, cfg = Lay.LAYOUT) {
+export async function collect(lstate, nowMs, cache, cfg = Lay.LAYOUT) {
   const warnings = [];
   const day = ymd(nowMs - D);                       /* 最後一根已收盤的 UTC 日線 */
 
@@ -46,7 +37,6 @@ export async function collect(lstate, nowMs, cachePath, cfg = Lay.LAYOUT) {
   }
 
   /* 2. Bybit：公開成交檔清單 → 對到同一檔股票 */
-  const cache = loadCache(cachePath);
   const notStock = new Set(cache.notStock || []);
   let bybitList = [];
   try { bybitList = await V.VENUES.bybit.list(); } catch { /* 下面會記警告 */ }
@@ -70,7 +60,7 @@ export async function collect(lstate, nowMs, cachePath, cfg = Lay.LAYOUT) {
   }
   await V.poolMap(jobs, 12, async ([s, d]) => {
     const b = await V.VENUES.bybit.day(s, d);
-    cache.days[s][d] = b ? [b.o, b.h, b.l, b.c, Math.round(b.qv)] : (d < ymd(nowMs - 2 * D) ? 0 : undefined);
+    cache.days[s][d] = b ? [b.o, b.h, b.l, b.c, Math.round(b.qv), b.h24] : (d < ymd(nowMs - 2 * D) ? 0 : undefined);
   });
   /* 價格檢查：Bybit 同名合約若其實是加密貨幣（價格差太多），記下來以後跳過 */
   for (const r of Object.values(ref)) {
@@ -84,7 +74,6 @@ export async function collect(lstate, nowMs, cachePath, cfg = Lay.LAYOUT) {
   const oldest = ymd(nowMs - CACHE_DAYS * D);
   for (const s of Object.keys(cache.days)) for (const d of Object.keys(cache.days[s])) if (d < oldest) delete cache.days[s][d];
   cache.notStock = [...notStock];
-  saveCache(cachePath, cache);
 
   const bybitYesterday = bySyms.filter(s => cache.days[s]?.[day]).length;
   const bybitReady = bySyms.length > 0 && bybitYesterday / bySyms.length > 0.5;

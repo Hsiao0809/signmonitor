@@ -58,6 +58,11 @@ export const VENUES = {
         rows = rows.concat(j2?.data || []);
       }
       return tail(rows.map(k => bar(k[0], k[1], k[2], k[3], k[4], k[7])), days);
+    },
+    /* 1H K：只回已收盤的（confirm=1），約 12 天 */
+    async hourly(sym) {
+      const j = await getJSON(`https://www.okx.com/api/v5/market/candles?instId=${sym}&bar=1H&limit=300`);
+      return (j?.data || []).filter(k => k[8] === '1').map(k => bar(k[0], k[1], k[2], k[3], k[4], k[7])).sort((a, b) => a.t - b.t);
     }
   },
   bitget: {
@@ -70,6 +75,12 @@ export const VENUES = {
       const end = Date.now();
       const j = await getJSON(`https://api.bitget.com/api/v2/mix/market/history-candles?symbol=${sym}&productType=USDT-FUTURES&granularity=1Dutc&endTime=${end}&limit=200`);
       return tail((j?.data || []).map(k => bar(k[0], k[1], k[2], k[3], k[4], k[6])), days);
+    },
+    /* 1H K：約 8 天，去掉還沒收盤的最後一根 */
+    async hourly(sym) {
+      const j = await getJSON(`https://api.bitget.com/api/v2/mix/market/candles?symbol=${sym}&productType=USDT-FUTURES&granularity=1H&limit=200`);
+      const now = Date.now();
+      return (j?.data || []).map(k => bar(k[0], k[1], k[2], k[3], k[4], k[6])).filter(b => b.t + 3600e3 <= now).sort((a, b) => a.t - b.t);
     }
   },
   /* ---- Bybit API 擋美國雲端，改讀它公開的逐筆成交檔；需要外部快取（見 run.mjs） ---- */
@@ -79,12 +90,14 @@ export const VENUES = {
       const html = await getText('https://public.bybit.com/trading/');
       return [...(html || '').matchAll(/href="([A-Z0-9]+USDT)\/"/g)].map(m => ({ sym: m[1], base: m[1].replace(/USDT$/, '').replace(/STOCK$/, '') }));
     },
-    /* 單日：下載當天逐筆成交，彙整成日線 */
+    /* 單日：下載當天逐筆成交，彙整成日線；h24＝每小時成交額（UTC 0～23 時） */
     async day(sym, ymd) {
       const buf = await getBuf(`https://public.bybit.com/trading/${sym}/${sym}${ymd}.csv.gz`);
       if (!buf) return null;
       const text = zlib.gunzipSync(buf).toString('latin1');
       let o, h = -Infinity, l = Infinity, c, qv = 0, t0 = Infinity, t1 = -Infinity;
+      const day0 = Date.parse(ymd + 'T00:00:00Z') / 1000;
+      const h24 = new Array(24).fill(0);
       /* 欄位：timestamp,symbol,side,size,price,tickDirection,trdMatchID,grossValue,homeNotional,foreignNotional,RPI
          逐字掃描逗號，比整行 split 快很多（大檔一天可達數十 MB） */
       let pos = text.indexOf('\n') + 1;
@@ -96,7 +109,13 @@ export const VENUES = {
           if (i === stop || text.charCodeAt(i) === 44) {
             if (f === 0) ts = +text.slice(a, i);
             else if (f === 4) p = +text.slice(a, i);
-            else if (f === 9) { qv += +text.slice(a, i); break; }
+            else if (f === 9) {
+              const q = +text.slice(a, i);
+              qv += q;
+              const hi = Math.floor((ts - day0) / 3600);
+              if (hi >= 0 && hi < 24) h24[hi] += q;
+              break;
+            }
             f++; a = i + 1;
           }
         }
@@ -107,10 +126,45 @@ export const VENUES = {
         }
         pos = end < 0 ? -1 : end + 1;
       }
-      return isFinite(h) ? bar(Date.parse(ymd + 'T00:00:00Z'), o, h, l, c, qv) : null;
+      return isFinite(h) ? { ...bar(Date.parse(ymd + 'T00:00:00Z'), o, h, l, c, qv), h24: h24.map(Math.round) } : null;
     }
   }
 };
+
+/* ---------------- Bybit WebSocket：抓整點收盤的 1H K ----------------
+   Bybit 的 REST API 擋美國雲端，但公開 WebSocket 可用。
+   在整點前連上、訂閱 kline.60，等到該小時收盤（confirm=true）就記下來。
+   回傳 { SYM: {t,o,h,l,c,qv,confirm} }；抓不到收盤的會是最後一筆未確認資料（confirm=false） */
+export async function bybitCaptureHour(symbols, hourStart, { untilMs, perConn = 100 } = {}) {
+  const out = {};
+  if (typeof WebSocket === 'undefined' || !symbols.length) return out;
+  const deadline = untilMs ?? hourStart + 3600e3 + 25e3;
+  const chunks = [];
+  for (let i = 0; i < symbols.length; i += perConn) chunks.push(symbols.slice(i, i + perConn));
+  await Promise.all(chunks.map(chunk => new Promise(resolve => {
+    let ws, done = false, ping;
+    const finish = () => { if (done) return; done = true; clearInterval(ping); try { ws.close(); } catch {} resolve(); };
+    const timer = setTimeout(finish, Math.max(1000, deadline - Date.now()));
+    try { ws = new WebSocket('wss://stream.bybit.com/v5/public/linear'); } catch { clearTimeout(timer); return finish(); }
+    ws.onopen = () => {
+      for (let i = 0; i < chunk.length; i += 10) ws.send(JSON.stringify({ op: 'subscribe', args: chunk.slice(i, i + 10).map(s => `kline.60.${s}`) }));
+      ping = setInterval(() => { try { ws.send('{"op":"ping"}'); } catch {} }, 20000);
+    };
+    ws.onmessage = ev => {
+      let m; try { m = JSON.parse(String(ev.data)); } catch { return; }
+      if (!m.topic || !m.topic.startsWith('kline.60.')) return;
+      const sym = m.topic.slice(9);
+      for (const k of m.data || []) {
+        if (+k.start !== hourStart) continue;
+        out[sym] = { ...bar(k.start, k.open, k.high, k.low, k.close, k.turnover), confirm: !!k.confirm };
+      }
+      if (chunk.every(s => out[s]?.confirm)) { clearTimeout(timer); finish(); }
+    };
+    ws.onerror = () => {};
+    ws.onclose = () => { clearTimeout(timer); finish(); };
+  })));
+  return out;
+}
 
 export const LIVE_VENUES = Object.keys(VENUES).filter(k => !VENUES[k].archive);
 export const ARCHIVE_VENUES = Object.keys(VENUES).filter(k => VENUES[k].archive);

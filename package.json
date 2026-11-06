@@ -4,7 +4,7 @@
   "type": "module",
   "description": "訊號掃描台的雲端自動化：每日爆量掃描、短線觸發追蹤、OKX／Bitget／Bybit 布局清單",
   "scripts": {
-    "test": "node --test test/tracker.test.mjs test/layout.test.mjs",
+    "test": "node --test test/tracker.test.mjs test/layout.test.mjs test/hourly.test.mjs",
     "probe": "node src/probe.mjs",
     "run": "node src/run.mjs --out out --daily force"
   }

@@ -13,6 +13,9 @@ import * as core from './core.mjs';
 import * as T from './tracker.mjs';
 import * as Lay from './layout.mjs';
 import * as LS from './layout-scan.mjs';
+import * as V from './venues.mjs';
+import * as HR from './hourly.mjs';
+import * as HS from './hourly-scan.mjs';
 
 T.setPatternScan(core.patternScan);
 const CFG = T.CONFIG;
@@ -92,8 +95,29 @@ async function main() {
   const a = args(process.argv);
   const outDir = a.out || 'out';
   fs.mkdirSync(outDir, { recursive: true });
-  const nowMs = a.now ? Date.parse(a.now) : Date.now();
+  const startMs = a.now ? Date.parse(a.now) : Date.now();
   const issueUrl = a['issue-url'] || '';
+  const cachePath = a['bybit-cache'] || '.cache/bybit-daily.json';
+  const cache = HS.loadCache(cachePath);
+
+  /* ---------- 盤中爆量：整點前先準備、連上 Bybit WebSocket，等整點收盤 ---------- */
+  const hourlyBody = a['hourly-body'] && fs.existsSync(a['hourly-body']) ? fs.readFileSync(a['hourly-body'], 'utf8') : '';
+  const hstate = HR.extractHourly(hourlyBody);
+  if (!hstate) throw new Error('盤中爆量 Issue 的狀態無法解析；為避免覆蓋，本輪停止');
+  const HOUR = 3600e3;
+  const preClose = new Date(startMs).getUTCMinutes() >= 40;        /* 排程在 :50 啟動；晚到整點後就評估上一小時 */
+  const targetHour = preClose ? Math.floor(startMs / HOUR) * HOUR : Math.floor(startMs / HOUR) * HOUR - HOUR;
+  const doHourly = !a.now && a.hourly !== 'skip' && hstate.lastHour !== targetHour;
+  const hw = [];
+  let prep = null, capP = Promise.resolve({});
+  if (doHourly) {
+    try { prep = await HS.prepare(cache, hw); } catch (e) { hw.push(`盤中爆量準備失敗：${e.message}`); }
+    if (prep && preClose) capP = V.bybitCaptureHour(prep.bybit.map(x => x.sym), targetHour);
+    if (prep) { try { await HS.ensureBybitBaseline(cache, prep.bybit, prep.refPrice, startMs); } catch (e) { hw.push(`Bybit 每小時基準更新失敗：${e.message}`); } }
+    if (preClose) await new Promise(r => setTimeout(r, Math.max(0, targetHour + HOUR + 20e3 - Date.now())));
+  }
+  const captured = await capP;
+  const nowMs = a.now ? startMs : Date.now();
   const body = a.body && fs.existsSync(a.body) ? fs.readFileSync(a.body, 'utf8') : '';
   const state = T.extractState(body);
   if (!state) throw new Error('Issue 本文裡的狀態無法解析；為避免覆蓋清單，本輪停止');
@@ -123,7 +147,7 @@ async function main() {
     || (a.daily === 'auto' && lstate.lastDay !== lday && T.tpeHour(nowMs) >= CFG.dailyHourTPE);
   if (doLayout) {
     try {
-      const r = await LS.collect(lstate, nowMs, a['bybit-cache'] || '.cache/bybit-daily.json');
+      const r = await LS.collect(lstate, nowMs, cache);
       if (r.ready) {
         /* 舊的清單項目補上各交易所代號（TradingView 連結用） */
         lstate.active.forEach(it => { if (!it.syms || !Object.keys(it.syms).length) it.syms = r.symsOf(it.base) || {}; });
@@ -160,8 +184,26 @@ async function main() {
   }
   fs.writeFileSync(path.join(outDir, 'issue-body.md'), out);
 
+  /* ---------- 盤中爆量：整點收盤後判斷 ---------- */
+  let halerts = [];
+  if (prep) {
+    try {
+      HS.rememberCaptured(cache, captured, nowMs);
+      const entries = await HS.collectEntries(prep, cache, captured, targetHour, hw);
+      halerts = HR.pickAlerts(hstate, entries, targetHour);
+      const cnt = v => entries.filter(e => e.venue === v).length;
+      const hnote = `最近一次檢查：${T.tpe(targetHour)}–${T.tpe(targetHour + HOUR).slice(11)} 台灣時間這根 1H K；OKX ${cnt('okx')} 檔、Bitget ${cnt('bitget')} 檔、Bybit ${cnt('bybit')} 檔，本小時 ${halerts.length} 檔`;
+      fs.writeFileSync(path.join(outDir, 'hourly-body.md'), HR.embedHourly(T.render(HR.hourlyMarkdown(hstate, { nowMs, warnings: hw, note: hnote }), 'md'), hstate));
+      if (halerts.length) fs.writeFileSync(path.join(outDir, 'hourly-comment.md'), T.render(HR.hourlyAlertText(halerts, targetHour, hw), 'md').replace(/\n/g, '  \n'));
+    } catch (e) { hw.push(`盤中爆量判斷失敗：${e.message}`); }
+  }
+  HS.saveCache(cachePath, cache);
+
   const msgs = [];
-  if (daily) msgs.push(T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG));
+  const hmsg = HR.hourlyAlertText(halerts, targetHour, [], a['hourly-url'] || '');
+  if (hmsg) msgs.push(hmsg);
+  const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
+  if (dailyMsg) msgs.push(dailyMsg);
   if (layout) msgs.push(Lay.layoutDailyText(layout.added, layout.events, lstate) + (a['layout-url'] ? `\n${a['layout-url']}` : ''));
   else if (doDaily) msgs.push(`訊號掃描台｜每日掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${warnings.filter(w => w.startsWith('每日')).join('\n')}`);
   const ev = T.hourlyText(events, daily ? '' : issueUrl, CFG);
@@ -171,7 +213,7 @@ async function main() {
 
   const comment = [];
   const mdLines = t => T.render(t, 'md').replace(/\n/g, '  \n');
-  if (daily) comment.push(`## 每日掃描 ${T.tpe(nowMs)} 台灣時間\n\n${mdLines(msgs[0])}`);
+  if (daily) comment.push(`## 每日掃描 ${T.tpe(nowMs)} 台灣時間\n\n${mdLines(dailyMsg)}`);
   if (events.length) comment.push(`## 狀態變化 ${T.tpe(nowMs)} 台灣時間\n\n${events.map(e => '- ' + T.render(T.eventText(e, CFG), 'md').replace(/\n/g, '  \n  ')).join('\n')}`);
   if (comment.length) fs.writeFileSync(path.join(outDir, 'comment.md'), comment.join('\n\n'));
   if (layout) fs.writeFileSync(path.join(outDir, 'layout-comment.md'),
@@ -181,10 +223,11 @@ async function main() {
     `daily=${doDaily ? (daily ? 'ok' : 'failed') : 'skip'}`,
     `pending=${state.pending.length} open=${state.open.length} closed=${state.closed.length}`,
     `layout=${layout ? `ok active=${lstate.active.length} added=${layout.added.length}` : (doLayout ? 'deferred' : 'skip')}`,
-    `events=${events.length} warnings=${warnings.length}`
+    `events=${events.length} warnings=${warnings.length}`,
+    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');
   console.log(summary);
-  warnings.forEach(w => console.log('warning:', w));
+  [...warnings, ...hw].forEach(w => console.log('warning:', w));
 }
 
 main().catch(e => { console.error(e.stack || e.message); process.exit(1); });
