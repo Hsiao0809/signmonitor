@@ -23,6 +23,7 @@ test('跟同一小時比：每天固定的開盤量不會被當成爆量', () =>
 
 test('同時段 5 倍、近 48h 3 倍、成交額達標才算爆量', () => {
   const st = HR.hourStats(bars(4e6, { usOpen: 4e5, base: 1e5 }), T, 'crypto');
+  assert.equal(st.price, 10.2);
   assert.ok(st.x1 >= 5 && st.x2 >= 3);
   assert.equal(HR.isAnomaly(st, 'crypto'), true);
   const small = HR.hourStats(bars(2500, { usOpen: 400, base: 100 }), T, 'crypto');
@@ -69,14 +70,16 @@ test('只有一家爆量的標示、12 小時內不重複通知', () => {
 test('通知文字含 TradingView 1H 連結與其他家倍數', () => {
   const s = HR.emptyHourly();
   const a = HR.pickAlerts(s, [
-    { venue: 'bybit', sym: 'APPSTOCKUSDT', base: 'APP', cat: 'stock', stats: { x1: 12, x2: 6, qv: 2e6, chg: 0.02 } },
-    { venue: 'okx', sym: 'APP-USDT-SWAP', base: 'APP', cat: 'stock', stats: { x1: 1.1, x2: 1, qv: 1e5, chg: 0 } }
+    { venue: 'bybit', sym: 'APPSTOCKUSDT', base: 'APP', cat: 'stock', stats: { x1: 12, x2: 6, qv: 2e6, chg: 0.02, price: 351.49 } },
+    { venue: 'okx', sym: 'APP-USDT-SWAP', base: 'APP', cat: 'stock', stats: { x1: 1.1, x2: 1, qv: 1e5, chg: 0, price: 351.2 } }
   ], T);
   const txt = HR.hourlyAlertText(a, T);
   assert.match(txt, /盤中爆量/);
   assert.match(txt, /BYBIT%3AAPPSTOCKUSDT\.P&interval=60/);
   assert.match(txt, /只有 Bybit/);
   assert.match(txt, /OKX 1\.1x/);
+  assert.match(txt, /價格 351\.49（1H \+2\.0%）/);
+  assert.match(HR.hourlyMarkdown(s, { nowMs: T }), /\| 351\.49 \|/);
 });
 
 test('狀態可寫進 Issue 並讀回', () => {

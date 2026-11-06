@@ -205,7 +205,7 @@ export function layoutDailyText(added, events, state, cfg = LAYOUT) {
 export function layoutEventText(e, cfg = LAYOUT) {
   const p = e.item;
   const head = e.type === 'settle' ? `【布局結算 ${cfg.holdDays} 天】` : `【布局 ${e.days} 天】`;
-  return `${head}${tvLink(p)}（${kindOf(p)}，${p.day}）${pc(p.ret)}，相對大盤 ${pc(p.ex)}，期間最大回撤 ${pc(p.mae)}`;
+  return `${head}${tvLink(p)}（${kindOf(p)}，${p.day}）爆量日收 ${fmtP(p.entry)} → 現價 ${fmtP(p.last)}，${pc(p.ret)}，相對大盤 ${pc(p.ex)}，期間最大回撤 ${pc(p.mae)}`;
 }
 
 export function layoutMarkdown(state, { nowMs, warnings = [], note = '' }, cfg = LAYOUT) {
