@@ -6,7 +6,7 @@
    滿 holdDays 天結算。不用 4H 觸發、不設緊停損，和短線清單是兩套邏輯。
    ============================================================ */
 import zlib from 'node:zlib';
-import { tpe, fmtP } from './tracker.mjs';
+import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 
 export const LAYOUT = {
   venues: ['okx', 'bitget', 'bybit'],
@@ -54,7 +54,7 @@ export function layoutCandidate(meta, series, day, nowMs, cfg = LAYOUT) {
   const single = spiked.length === 1 && others.length >= 1 && others.every(v => per[v].x < cfg.otherQuietX);
   const refBar = per[meta.ref]?.bar || per[spiked[0]].bar;
   return {
-    base: meta.base, cat: meta.cat, ref: per[meta.ref] ? meta.ref : spiked[0],
+    base: meta.base, cat: meta.cat, ref: per[meta.ref] ? meta.ref : spiked[0], syms: meta.syms || {},
     day, dayT: refBar.t, entry: refBar.c, hi: refBar.h, lo: refBar.l, chgDay: +((refBar.c / refBar.o - 1) * 100).toFixed(2),
     venues: Object.fromEntries(cfg.venues.map(v => [v, per[v] ? { x: +per[v].x.toFixed(2), qv: Math.round(per[v].qv) } : null])),
     spiked, single, addedAt: nowMs, status: 'active',
@@ -147,7 +147,7 @@ export function advanceLayout(state, refBarsOf, nowMs, cfg = LAYOUT) {
 }
 
 function slimLayout(p) {
-  const k = ['base', 'cat', 'day', 'entry', 'last', 'ret', 'ex', 'mae', 'mfe', 'spiked', 'single', 'venues', 'respikes', 'closedT', 'age'];
+  const k = ['base', 'cat', 'syms', 'spiked0', 'day', 'entry', 'last', 'ret', 'ex', 'mae', 'mfe', 'spiked', 'single', 'venues', 'respikes', 'closedT', 'age'];
   return Object.fromEntries(k.map(x => [x, p[x]]));
 }
 
@@ -163,6 +163,12 @@ export function layoutStats(closed) {
 }
 
 /* ---------------- 文字 ---------------- */
+/** 標的名稱連到「爆量那一家」的 TradingView 日線圖；沒有該家代號時改用參考交易所 */
+export function tvLink(it) {
+  const syms = it.syms || {};
+  const v = (it.spiked || []).find(x => syms[x]) || (syms[it.ref] ? it.ref : Object.keys(syms).find(x => syms[x]));
+  return link(it.base, v ? tvUrl(v, syms[v], 'D') : null);
+}
 export function kindOf(it) {
   if (it.single) return `只有 ${VL[it.spiked[0]]} 爆量`;
   if (it.spiked.length > 1) return `${it.spiked.map(v => VL[v]).join('＋')} 同時爆量`;
@@ -184,7 +190,7 @@ export function layoutDailyText(added, events, state, cfg = LAYOUT) {
     const top = added.slice().sort((a, b) => (b.single - a.single) || (Math.max(...b.spiked.map(v => b.venues[v].x)) - Math.max(...a.spiked.map(v => a.venues[v].x)))).slice(0, 12);
     L.push(`布局清單新進 ${added.length} 檔（任一家量 ≥${cfg.minX}x，列前 ${top.length}；★＝爆量的交易所）`);
     top.forEach(c => {
-      L.push(`${c.base}［${CAT[c.cat] || c.cat}］${kindOf(c)}｜收 ${fmtP(c.entry)}（${c.chgDay >= 0 ? '+' : ''}${c.chgDay.toFixed(1)}%）`);
+      L.push(`${tvLink(c)}［${CAT[c.cat] || c.cat}］${kindOf(c)}｜收 ${fmtP(c.entry)}（${c.chgDay >= 0 ? '+' : ''}${c.chgDay.toFixed(1)}%）`);
       L.push(`  ${venueLine(c, cfg)}`);
     });
     L.push(`布局單以能承受 -${cfg.sizePct}% 回撤計算部位，追蹤 ${cfg.holdDays} 天`);
@@ -199,7 +205,7 @@ export function layoutDailyText(added, events, state, cfg = LAYOUT) {
 export function layoutEventText(e, cfg = LAYOUT) {
   const p = e.item;
   const head = e.type === 'settle' ? `【布局結算 ${cfg.holdDays} 天】` : `【布局 ${e.days} 天】`;
-  return `${head}${p.base}（${kindOf(p)}，${p.day}）${pc(p.ret)}，相對大盤 ${pc(p.ex)}，期間最大回撤 ${pc(p.mae)}`;
+  return `${head}${tvLink(p)}（${kindOf(p)}，${p.day}）${pc(p.ret)}，相對大盤 ${pc(p.ex)}，期間最大回撤 ${pc(p.mae)}`;
 }
 
 export function layoutMarkdown(state, { nowMs, warnings = [], note = '' }, cfg = LAYOUT) {
@@ -214,9 +220,9 @@ export function layoutMarkdown(state, { nowMs, warnings = [], note = '' }, cfg =
   if (state.active.length) {
     L.push('| 標的 | 爆量日 | 三家量倍數 | 類型 | 爆量日收盤 | 現價 | 報酬 | 相對大盤 | 最大回撤 | 天數 | 再爆量 |');
     L.push('|---|---|---|---|---|---|---|---|---|---|---|');
-    state.active.slice().sort((a, b) => b.day.localeCompare(a.day) || (b.single - a.single)).slice(0, 150).forEach(it => L.push(
-      `| ${it.base}［${CAT[it.cat] || it.cat}］ | ${it.day.slice(5)} | ${venueLine(it, cfg)} | ${kindOf(it)} | ${fmtP(it.entry)} | ${fmtP(it.last)} | ${pc(it.ret)} | ${pc(it.ex)} | ${pc(it.mae)} | ${it.age ?? 0} | ${it.respikes || ''} |`));
-    if (state.active.length > 150) L.push(`\n另有 ${state.active.length - 150} 檔未列出，仍在追蹤。`);
+    state.active.slice().sort((a, b) => b.day.localeCompare(a.day) || (b.single - a.single)).slice(0, 100).forEach(it => L.push(
+      `| ${tvLink(it)}［${CAT[it.cat] || it.cat}］ | ${it.day.slice(5)} | ${venueLine(it, cfg)} | ${kindOf(it)} | ${fmtP(it.entry)} | ${fmtP(it.last)} | ${pc(it.ret)} | ${pc(it.ex)} | ${pc(it.mae)} | ${it.age ?? 0} | ${it.respikes || ''} |`));
+    if (state.active.length > 100) L.push(`\n另有 ${state.active.length - 100} 檔未列出，仍在追蹤。`);
   } else L.push('無');
   L.push('');
   const s = layoutStats(state.closed);

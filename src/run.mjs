@@ -125,6 +125,8 @@ async function main() {
     try {
       const r = await LS.collect(lstate, nowMs, a['bybit-cache'] || '.cache/bybit-daily.json');
       if (r.ready) {
+        /* 舊的清單項目補上各交易所代號（TradingView 連結用） */
+        lstate.active.forEach(it => { if (!it.syms || !Object.keys(it.syms).length) it.syms = r.symsOf(it.base) || {}; });
         Lay.updateMarket(lstate, r.refSeries);
         const levents = Lay.advanceLayout(lstate, r.refBarsOf, nowMs);
         const added = Lay.mergeLayout(lstate, r.candidates);
@@ -140,7 +142,7 @@ async function main() {
   if (layout) {
     const note = `資料日 ${layout.day}（UTC 日線）：OKX ${layout.counts.okx} 檔、Bitget ${layout.counts.bitget} 檔、Bybit ${layout.counts.bybit} 檔，新進 ${layout.added.length} 檔`;
     fs.writeFileSync(path.join(outDir, 'layout-body.md'),
-      Lay.embedLayout(Lay.layoutMarkdown(lstate, { nowMs, warnings: layout.warnings, note }), lstate));
+      Lay.embedLayout(T.render(Lay.layoutMarkdown(lstate, { nowMs, warnings: layout.warnings, note }), 'md'), lstate));
   }
 
   const fetch4h = item => core.EXCHANGES[item.ex].kl(item.id, '4h', 0, 120);
@@ -152,7 +154,7 @@ async function main() {
     : (state.lastDaily ? `最近一次每日掃描：${state.lastDaily}` : '');
   let rowsLimit = Infinity, out;
   for (;;) {
-    out = T.embedState(T.issueMarkdown(state, { nowMs, warnings, lastDailyNote: note, pendingRows: rowsLimit }, CFG), state);
+    out = T.embedState(T.render(T.issueMarkdown(state, { nowMs, warnings, lastDailyNote: note, pendingRows: rowsLimit }, CFG), 'md'), state);
     if (out.length <= T.BODY_LIMIT || rowsLimit === 0) break;
     rowsLimit = rowsLimit === Infinity ? 80 : Math.floor(rowsLimit / 2);
   }
@@ -164,14 +166,16 @@ async function main() {
   else if (doDaily) msgs.push(`訊號掃描台｜每日掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${warnings.filter(w => w.startsWith('每日')).join('\n')}`);
   const ev = T.hourlyText(events, daily ? '' : issueUrl, CFG);
   if (ev) msgs.push(ev);
-  splitMessages(msgs.join('\n\n')).forEach((m, i) => fs.writeFileSync(path.join(outDir, `telegram-${i + 1}.txt`), m));
+  /* Telegram 以 HTML 格式發送，標的名稱可直接點開 TradingView；先切段再轉換，避免標籤被切斷 */
+  splitMessages(msgs.join('\n\n'), 3500).forEach((m, i) => fs.writeFileSync(path.join(outDir, `telegram-${i + 1}.txt`), T.render(m, 'html')));
 
   const comment = [];
-  if (daily) comment.push(`## 每日掃描 ${T.tpe(nowMs)} 台灣時間\n\n${'```'}\n${msgs[0]}\n${'```'}`);
-  if (events.length) comment.push(`## 狀態變化 ${T.tpe(nowMs)} 台灣時間\n\n${events.map(e => '- ' + T.eventText(e, CFG).replace(/\n/g, '\n  ')).join('\n')}`);
+  const mdLines = t => T.render(t, 'md').replace(/\n/g, '  \n');
+  if (daily) comment.push(`## 每日掃描 ${T.tpe(nowMs)} 台灣時間\n\n${mdLines(msgs[0])}`);
+  if (events.length) comment.push(`## 狀態變化 ${T.tpe(nowMs)} 台灣時間\n\n${events.map(e => '- ' + T.render(T.eventText(e, CFG), 'md').replace(/\n/g, '  \n  ')).join('\n')}`);
   if (comment.length) fs.writeFileSync(path.join(outDir, 'comment.md'), comment.join('\n\n'));
   if (layout) fs.writeFileSync(path.join(outDir, 'layout-comment.md'),
-    `## 布局清單 ${T.tpe(nowMs)} 台灣時間\n\n${'```'}\n${Lay.layoutDailyText(layout.added, layout.events, lstate)}\n${'```'}`);
+    `## 布局清單 ${T.tpe(nowMs)} 台灣時間\n\n${mdLines(Lay.layoutDailyText(layout.added, layout.events, lstate))}`);
 
   const summary = [
     `daily=${doDaily ? (daily ? 'ok' : 'failed') : 'skip'}`,

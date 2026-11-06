@@ -138,3 +138,17 @@ test('Telegram 訊息包含進場、停損與目標', () => {
   assert.match(txt, /停損：225\.60/);
   assert.match(txt, /T2/);
 });
+
+test('TradingView 連結格式與網頁版相同', () => {
+  assert.equal(T.tvSymbol('okx', 'APP-USDT-SWAP'), 'OKX:APPUSDT.P');
+  assert.equal(T.tvSymbol('bybit', 'APPSTOCKUSDT'), 'BYBIT:APPSTOCKUSDT.P');
+  assert.equal(T.tvSymbol('bitget', 'APPUSDT'), 'BITGET:APPUSDT.P');
+  assert.match(T.tvUrl('okx', 'APP-USDT-SWAP', '240'), /symbol=OKX%3AAPPUSDT\.P&interval=240$/);
+});
+
+test('連結標記可轉成 Telegram HTML、Markdown、純文字', () => {
+  const t = `${T.link('APP', 'https://x.test/?a=1&b=2')} <突破> & 收盤`;
+  assert.equal(T.render(t, 'html'), '<a href="https://x.test/?a=1&amp;b=2">APP</a> &lt;突破&gt; &amp; 收盤');
+  assert.equal(T.render(t, 'md'), '[APP](https://x.test/?a=1&b=2) <突破> & 收盤');
+  assert.equal(T.render(t, 'plain'), 'APP <突破> & 收盤');
+});

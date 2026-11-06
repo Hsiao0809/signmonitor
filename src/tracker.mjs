@@ -40,7 +40,8 @@ export const CONFIG = {
     'SOXL', 'SOXS', 'TQQQ', 'SQQQ', 'UVXY', 'SVXY', 'VXX', 'SPXL', 'SPXS', 'SPXU',
     'UPRO', 'TNA', 'TZA', 'LABU', 'LABD', 'TSLL', 'TSLQ', 'NVDL', 'NVDQ', 'MSTU',
     'MSTZ', 'CONL', 'MUU', 'SNXX', 'FNGU', 'FNGD', 'TECL', 'TECS', 'YINN', 'YANG',
-    'SKUU', 'INTW', 'NVDU', 'AMDL', 'PLTU', 'GGLL', 'METU', 'AMZU', 'AAPU'
+    'SKUU', 'INTW', 'NVDU', 'AMDL', 'PLTU', 'GGLL', 'METU', 'AMZU', 'AAPU',
+    'SKDD', 'MSFU', 'KORU', 'TMF', 'TBT', 'MVLL', 'AGPU', 'CRML', 'SPXU'
   ]),
   /* 名稱以 2L／3L／2S／3S 結尾的槓桿商品（例如港股 CSOP 系列），以及外匯對 */
   excludePattern: /(?:[23][LS]$)|^(?:USD(?:JPY|BRL|CAD|CHF|CNH|KRW|TRY|MXN|TWD|HKD|SGD|INR)|(?:EUR|GBP|AUD|NZD)USD)$/
@@ -79,6 +80,37 @@ const pct = (a, b) => (a / b - 1) * 100;
 const sgn = v => (v >= 0 ? '+' : '') + v.toFixed(1);
 const CAT = { crypto: '加密', stock: '股票', comm: '商品' };
 const EXL = { okx: 'OKX', bitget: 'Bitget', bybit: 'Bybit', binance: 'Binance' };
+
+/* ---------------- TradingView 連結 ----------------
+   格式與網頁版訊號掃描台相同：EXCHANGE:BASEUSDT.P。
+   文字先用 link() 嵌入標記，最後依輸出位置轉成 Telegram HTML 或 Markdown。 */
+const TV = { okx: 'OKX', bitget: 'BITGET', bybit: 'BYBIT', binance: 'BINANCE' };
+export function tvSymbol(ex, sym) {
+  if (!ex || !sym) return null;
+  const core = ex === 'okx' ? String(sym).split('-')[0] : String(sym).replace(/USDT$/, '');
+  return `${TV[ex] || ex.toUpperCase()}:${core}USDT.P`;
+}
+export function tvUrl(ex, sym, interval = '240') {
+  const s = tvSymbol(ex, sym);
+  return s ? `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(s)}&interval=${interval}` : null;
+}
+export const link = (name, url) => (url ? `\u0001${name}\u0002${url}\u0003` : String(name));
+const LINK_RE = /\u0001([^\u0002]*)\u0002([^\u0003]*)\u0003/g;
+const escHtml = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** mode：'html'（Telegram）、'md'（GitHub）、'plain' */
+export function render(text, mode = 'plain') {
+  if (mode === 'html') {
+    let out = '', last = 0;
+    for (const m of text.matchAll(LINK_RE)) {
+      out += escHtml(text.slice(last, m.index)) + `<a href="${escHtml(m[2])}">${escHtml(m[1])}</a>`;
+      last = m.index + m[0].length;
+    }
+    return out + escHtml(text.slice(last));
+  }
+  if (mode === 'md') return text.replace(LINK_RE, (_, n, u) => `[${n}](${u})`);
+  return text.replace(LINK_RE, '$1');
+}
+const tvItem = p => link(p.base, tvUrl(p.ex, p.id, '240'));
 
 /* ---------------- 每日：找新候選 ---------------- */
 /**
@@ -227,7 +259,7 @@ export async function advanceAll(state, fetch4h, nowMs, cfg = CONFIG) {
 
 /* 結算後只留統計與列表需要的欄位，控制 Issue 本文大小 */
 export function slimClosed(p) {
-  const k = ['base', 'cat', 'ex', 'side', 'dayT', 'vx', 'entry', 'stop', 'exit', 'exitT', 'trigT', 'outcome', 'r', 'mfeR', 'maeR', 'riskPct'];
+  const k = ['base', 'cat', 'ex', 'id', 'side', 'dayT', 'vx', 'entry', 'stop', 'exit', 'exitT', 'trigT', 'outcome', 'r', 'mfeR', 'maeR', 'riskPct'];
   const o = {}; k.forEach(x => { o[x] = p[x]; }); o.flagged = !!(p.flags && p.flags.length);
   return o;
 }
@@ -253,7 +285,7 @@ const OUT = { stop: '停損出場', t2: '達 T2 出場', timeout: '逾時以收�
 export function triggerText(p, cfg = CONFIG) {
   const L = p.side === 'long';
   const lines = [
-    `【觸發 ${SIDE[p.side]}】${p.base}（${CAT[p.cat] || p.cat}，${EXL[p.ex] || p.ex}）`,
+    `【觸發 ${SIDE[p.side]}】${tvItem(p)}（${CAT[p.cat] || p.cat}，${EXL[p.ex] || p.ex}）`,
     `4H 收盤 ${fmtP(p.entry)} ${L ? '站上' : '跌破'}爆量日（${md(p.dayT)}，${p.vx}x）${L ? '高點' : '低點'} ${fmtP(p.level)}`,
     `進場：${fmtP(p.entry)}，或回測 ${fmtP(p.level)} 附近`,
     `停損：${fmtP(p.stop)}（爆量日${L ? '低點' : '高點'}，距離 ${p.riskPct.toFixed(1)}%）`,
@@ -268,8 +300,8 @@ export function triggerText(p, cfg = CONFIG) {
 export function eventText(e, cfg = CONFIG) {
   const p = e.item;
   if (e.type === 'trigger') return triggerText(p, cfg);
-  if (e.type === 't1') return `【T1】${p.base} ${SIDE[p.side]} 已達 T1 ${fmtP(p.t1)}（+${cfg.t1R}R），停損 ${fmtP(p.stop)} 不變`;
-  return `【結算】${p.base} ${SIDE[p.side]}：${OUT[p.outcome]} ${fmtP(p.exit)}，${p.r >= 0 ? '+' : ''}${p.r.toFixed(2)}R（進場 ${fmtP(p.entry)}）`;
+  if (e.type === 't1') return `【T1】${tvItem(p)} ${SIDE[p.side]} 已達 T1 ${fmtP(p.t1)}（+${cfg.t1R}R），停損 ${fmtP(p.stop)} 不變`;
+  return `【結算】${tvItem(p)} ${SIDE[p.side]}：${OUT[p.outcome]} ${fmtP(p.exit)}，${p.r >= 0 ? '+' : ''}${p.r.toFixed(2)}R（進場 ${fmtP(p.entry)}）`;
 }
 
 function statLine(s) {
@@ -277,7 +309,7 @@ function statLine(s) {
   return `已結算 ${s.n} 筆｜勝率 ${s.winRate.toFixed(0)}%｜平均 ${s.avgR >= 0 ? '+' : ''}${s.avgR.toFixed(2)}R`;
 }
 
-export function dailyText({ nowMs, exLabel, universe, added, rally, state, issueUrl, warnings }, cfg = CONFIG) {
+export function dailyText({ nowMs, ex: exKey, exLabel, universe, added, rally, state, issueUrl, warnings }, cfg = CONFIG) {
   const lines = [`訊號掃描台｜每日報告 ${tpe(nowMs)} 台灣時間（${exLabel}）`];
   lines.push(`掃描 ${universe.total} 檔（加密 ${universe.crypto}／股票 ${universe.stock}／商品 ${universe.comm}）`);
   lines.push('');
@@ -286,7 +318,7 @@ export function dailyText({ nowMs, exLabel, universe, added, rally, state, issue
     const mx = typeof cfg.candMinX === 'number' ? `${cfg.candMinX}x` : `股票 ${cfg.candMinX.stock}x／加密 ${cfg.candMinX.crypto}x`;
     lines.push(`新進觀察清單 ${added.length} 檔（爆量 ≥ ${mx}，列前 ${top.length}）`);
     top.forEach(c => {
-      lines.push(`${c.base}［${CAT[c.cat]}］${c.vx}x 收 ${fmtP(c.close)}（${sgn(c.chgDay)}%）`);
+      lines.push(`${tvItem(c)}［${CAT[c.cat]}］${c.vx}x 收 ${fmtP(c.close)}（${sgn(c.chgDay)}%）`);
       lines.push(`  多：4H 收盤 >${fmtP(c.hi)}｜空：4H 收盤 <${fmtP(c.lo)}`);
     });
   } else {
@@ -295,7 +327,7 @@ export function dailyText({ nowMs, exLabel, universe, added, rally, state, issue
   if (rally && rally.length) {
     lines.push('');
     lines.push(`起漲分數前 ${rally.length}（1H 模型，只供參考，不進清單）`);
-    rally.forEach(r => lines.push(`${r.base}［${CAT[r.cat]}］${r.score.toFixed(0)} 分｜24h ${sgn(r.chg24h)}%${r.reasons.length ? '｜' + r.reasons.map(x => x[0]).join('、') : ''}`));
+    rally.forEach(r => lines.push(`${link(r.base, tvUrl(exKey, r.id, '60'))}［${CAT[r.cat]}］${r.score.toFixed(0)} 分｜24h ${sgn(r.chg24h)}%${r.reasons.length ? '｜' + r.reasons.map(x => x[0]).join('、') : ''}`));
   }
   lines.push('');
   lines.push(`觀察清單：等待觸發 ${state.pending.length}｜持倉中 ${state.open.length}`);
@@ -325,7 +357,7 @@ export function issueMarkdown(state, { nowMs, warnings = [], lastDailyNote = '',
     L.push('| 標的 | 方向 | 進場 | 停損 | T1 | T2 | 觸發時間 | 最大有利 | 備註 |');
     L.push('|---|---|---|---|---|---|---|---|---|');
     state.open.slice().sort((a, b) => b.trigT - a.trigT).forEach(p => L.push(
-      `| ${p.base}［${CAT[p.cat]}］ | ${SIDE[p.side]} | ${fmtP(p.entry)} | ${fmtP(p.stop)}（${p.riskPct.toFixed(1)}%） | ${fmtP(p.t1)}${p.t1Hit ? ' ✓' : ''} | ${fmtP(p.t2)} | ${tpe(p.trigT)} | +${p.mfeR.toFixed(1)}R | ${p.flags.join('；') || ''} |`));
+      `| ${tvItem(p)}［${CAT[p.cat]}］ | ${SIDE[p.side]} | ${fmtP(p.entry)} | ${fmtP(p.stop)}（${p.riskPct.toFixed(1)}%） | ${fmtP(p.t1)}${p.t1Hit ? ' ✓' : ''} | ${fmtP(p.t2)} | ${tpe(p.trigT)} | +${p.mfeR.toFixed(1)}R | ${p.flags.join('；') || ''} |`));
   } else L.push('無');
   L.push('');
   L.push(`## 等待觸發（${state.pending.length}）`);
@@ -334,7 +366,7 @@ export function issueMarkdown(state, { nowMs, warnings = [], lastDailyNote = '',
     L.push('|---|---|---|---|---|---|---|---|');
     const rows = state.pending.slice().sort((a, b) => b.dayT - a.dayT || b.vx - a.vx);
     rows.slice(0, pendingRows).forEach(c => L.push(
-      `| ${c.base}［${CAT[c.cat]}］ | ${md(c.dayT)} | ${c.vx}x | ${sgn(c.chgDay)}% | ${PATTERN[c.pattern] || c.pattern} | ${fmtP(c.hi)} | ${fmtP(c.lo)} | ${tpe(c.dayT + D + cfg.expiryDays * D, false)} |`));
+      `| ${tvItem(c)}［${CAT[c.cat]}］ | ${md(c.dayT)} | ${c.vx}x | ${sgn(c.chgDay)}% | ${PATTERN[c.pattern] || c.pattern} | ${fmtP(c.hi)} | ${fmtP(c.lo)} | ${tpe(c.dayT + D + cfg.expiryDays * D, false)} |`));
     if (rows.length > pendingRows) L.push(`\n另有 ${rows.length - pendingRows} 檔未列出（本文長度上限），仍在追蹤中。`);
   } else L.push('無');
   L.push('');
@@ -351,7 +383,7 @@ export function issueMarkdown(state, { nowMs, warnings = [], lastDailyNote = '',
     L.push('| 標的 | 方向 | 進場 | 出場 | 結果 | R | 結算時間 |');
     L.push('|---|---|---|---|---|---|---|');
     state.closed.slice(-15).reverse().forEach(p => L.push(
-      `| ${p.base} | ${SIDE[p.side]} | ${fmtP(p.entry)} | ${fmtP(p.exit)} | ${OUT[p.outcome]} | ${p.r >= 0 ? '+' : ''}${p.r.toFixed(2)} | ${tpe(p.exitT)} |`));
+      `| ${link(p.base, tvUrl(p.ex, p.id, '240'))} | ${SIDE[p.side]} | ${fmtP(p.entry)} | ${fmtP(p.exit)} | ${OUT[p.outcome]} | ${p.r >= 0 ? '+' : ''}${p.r.toFixed(2)} | ${tpe(p.exitT)} |`));
   }
   if (warnings.length) {
     L.push('');

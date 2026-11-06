@@ -114,7 +114,7 @@ export async function collect(lstate, nowMs, cachePath, cfg = Lay.LAYOUT) {
   for (const r of items) {
     const s = series[r.base];
     const refEx = s.okx?.length ? 'okx' : s.bitget?.length ? 'bitget' : 'bybit';
-    const c = Lay.layoutCandidate({ base: r.base, cat: r.cat, ref: refEx }, s, day, nowMs, cfg);
+    const c = Lay.layoutCandidate({ base: r.base, cat: r.cat, ref: refEx, syms: { okx: r.okx, bitget: r.bitget, bybit: r.bybit } }, s, day, nowMs, cfg);
     if (c) candidates.push(c);
   }
   const refSeries = items.filter(r => r.cat === 'stock').map(r => series[r.base].okx || series[r.base].bitget).filter(b => b && b.length > 5);
@@ -125,5 +125,6 @@ export async function collect(lstate, nowMs, cachePath, cfg = Lay.LAYOUT) {
     bitget: items.filter(r => series[r.base].bitget?.length).length,
     bybit: items.filter(r => series[r.base].bybit?.length).length
   };
-  return { ready: true, day, candidates, refSeries, refBarsOf, warnings, counts };
+  const symsOf = base => ref[base] ? { okx: ref[base].okx, bitget: ref[base].bitget, bybit: ref[base].bybit } : null;
+  return { ready: true, day, candidates, refSeries, refBarsOf, symsOf, warnings, counts };
 }

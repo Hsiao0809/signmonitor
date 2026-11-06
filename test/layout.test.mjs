@@ -73,3 +73,9 @@ test('狀態寫進 Issue 後可讀回；壞資料回傳 null', () => {
   assert.deepEqual(L.extractLayout('無狀態'), L.emptyLayout());
   assert.equal(L.extractLayout('<!-- LAYOUT_STATE\n壞\nLAYOUT_STATE -->'), null);
 });
+
+test('布局清單的標的連到爆量那一家的 TradingView 日線圖', () => {
+  const c = L.layoutCandidate({ ...meta, syms: { okx: 'APP-USDT-SWAP', bitget: 'APPUSDT', bybit: 'APPSTOCKUSDT' } },
+    { okx: series(1.1), bitget: series(1.2), bybit: series(8, 1e6) }, DAY, Date.now());
+  assert.match(L.tvLink(c), /BYBIT%3AAPPSTOCKUSDT\.P&interval=D/);
+});
