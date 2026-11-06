@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /* 把 out/telegram-*.txt 依序發到 Telegram（純文字，不需要第三方套件）。
-   需要環境變數 TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID；只放在 GitHub Actions Secrets。 */
+   需要環境變數 TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID；只放在 GitHub Actions Secrets。
+   每則發送結果另存一行到 logs/telegram/YYYY-MM-DD.jsonl（台灣日期），由 workflow commit 回 repo，
+   方便事後回顧發過哪些訊號。紀錄只存訊息內容，不含 token 與 chat id。 */
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -21,11 +23,25 @@ async function send(text, html) {
 }
 /* 訊息是 HTML（標的名稱連到 TradingView）。萬一格式被 Telegram 拒絕，改用純文字再送一次 */
 const toPlain = t => t.replace(/<a href="[^"]*">([^<]*)<\/a>/g, '$1').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const logDir = process.env.TELEGRAM_LOG_DIR || 'logs/telegram';
+function record(f, text, r) {
+  const now = new Date();
+  const tw = now.toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false });
+  const line = JSON.stringify({
+    time: tw.replace(' ', 'T') + '+08:00', run: process.env.GITHUB_RUN_ID || null,
+    part: f, ok: r.ok, ...(r.ok ? {} : { error: `HTTP ${r.status} ${r.desc}`.trim() }), text: toPlain(text)
+  });
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, `${tw.slice(0, 10)}.jsonl`), line + '\n');
+  } catch (e) { console.error(`寫入發送紀錄失敗：${e.message}`); }
+}
 for (const f of files) {
   const text = fs.readFileSync(path.join(dir, f), 'utf8');
   if (!text.trim()) continue;
   let r = await send(text, true);
   if (!r.ok && r.status === 400) r = await send(toPlain(text).slice(0, 4096), false);
+  record(f, text, r);
   if (!r.ok) { console.error(`Telegram 發送失敗（HTTP ${r.status}）：${r.desc}`); process.exit(1); }
   console.log(`已發送 ${f}`);
 }

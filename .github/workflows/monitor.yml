@@ -19,7 +19,7 @@ on:
         default: auto
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   actions: write
 
@@ -132,6 +132,23 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node src/notify.mjs out
+
+      # 把這輪發出的 Telegram 訊息存回 repo 的 logs/telegram/，失敗不影響監控本身。
+      - name: Save Telegram log
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          [ -d logs/telegram ] || exit 0
+          git add logs/telegram
+          if git diff --cached --quiet; then echo "沒有新的發送紀錄"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "log: Telegram 發送紀錄"
+          for i in 1 2 3; do
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep 5
+          done
+          exit 1
 
       # 公開 repo 連續 60 天沒有新 commit，GitHub 會自動停用排程。
       # 每週一的每日掃描順便重新啟用一次本 workflow，避免被停用。

@@ -20,6 +20,8 @@
 GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於整點才啟動時改評估上一小時，但 Bybit 那一小時會缺（Bybit 只能靠整點即時連線抓）；短線清單與每日掃描會由下一輪自動補上。
 **觸發來源**：GitHub 自己的排程在這個 repo 常常不跑，所以另外由 Cloudflare Worker（`cloudflare/trigger-worker.js`）每小時第 50 分呼叫 GitHub 啟動；同一個 Worker 也提供自選標的網頁。兩邊同時觸發也不會重複處理：同一小時只判斷一次，同時間只會有一輪在跑。
 
+**發送紀錄**：每則 Telegram 訊息（含失敗的）都會存一行到 `logs/telegram/YYYY-MM-DD.jsonl`（台灣日期），欄位為 `time`、`run`、`part`、`ok`、`text`（純文字），由 workflow 自動 commit。只存訊息內容，不含 token 與 chat id；repo 公開，紀錄也公開。
+
 手動執行：Actions → Monitor → Run workflow，`daily` 選 `force` 立刻跑每日掃描。在第 40–59 分執行會等到整點。
 公開 repo 連續 60 天沒有新 commit 時 GitHub 會停用排程；workflow 每週一會自動重新啟用。
 
