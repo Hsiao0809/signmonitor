@@ -70,7 +70,7 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 ## 自選標的
 
-開啟 Cloudflare Worker 的網址（`signmonitor-trigger.<你的子網域>.workers.dev`）即可新增、移除，需要輸入 Worker 設定的 `ADMIN_PASSWORD`。清單存在 Issue「自選標的」，也可以直接編輯該 Issue。
+開啟 Cloudflare Worker 的網址（`signmonitor-trigger.<你的子網域>.workers.dev`）：上方分頁可看「盤中爆量」「短線」「布局」的最新資料（可篩選交易所、類別、只看自選、只有一家爆量），「自選」分頁可新增、移除標的，需要輸入 Worker 設定的 `ADMIN_PASSWORD`。代號輸入會自動轉成大寫。網頁資料快取 60 秒。清單存在 Issue「自選標的」，也可以直接編輯該 Issue。
 
 | 項目 | 自選標的的規則 |
 |---|---|
