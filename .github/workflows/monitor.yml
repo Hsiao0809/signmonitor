@@ -1,14 +1,14 @@
 name: Monitor
 
-# 獨立排程，不依賴其他 repo 或系統。
-# - 每 4 小時（UTC 4H K 收盤後約 10 分鐘）：推進短線清單的觸發、停損、目標
-# - 每天 01:20 UTC（台灣時間 09:20）：跑每日掃描（短線清單＋三家布局清單）
-#   Bybit 前一天的成交檔約 09:12 台灣時間公布；13:00 前沒公布會在下一輪重試
-# 公開 repo 的 Actions 不計分鐘額度。
+# 獨立排程，不依賴其他 repo 或系統。公開 repo 的 Actions 不計分鐘額度。
+# GitHub 排程是盡力執行，高峰時段可能延遲或整輪被略過，所以：
+# - 每小時第 23 分執行一次（避開整點與半點的擁擠時段）
+# - 每一輪都會補處理上次之後所有已收盤的 4H K，漏掉幾輪不會漏訊號，只是通知晚到
+# - 每日掃描在台灣時間 09:00 後「當天第一輪」執行；09:23 那輪被略過，下一輪會自動補跑
+#   Bybit 前一天的成交檔約 09:12 公布；13:00 前沒公布會在下一輪重試
 on:
   schedule:
-    - cron: "10 0,4,8,12,16,20 * * *"
-    - cron: "20 1 * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       daily:
@@ -129,12 +129,13 @@ jobs:
       # 公開 repo 連續 60 天沒有新 commit，GitHub 會自動停用排程。
       # 每週一的每日掃描順便重新啟用一次本 workflow，避免被停用。
       - name: Keep schedule alive
-        if: ${{ github.event_name == 'schedule' && github.event.schedule == '20 1 * * *' }}
+        if: ${{ github.event_name == 'schedule' }}
         continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            if (new Date().getUTCDay() !== 1) return;
+            const now = new Date();
+            if (now.getUTCDay() !== 1 || now.getUTCHours() !== 2) return;
             await github.rest.actions.enableWorkflow({
               owner: context.repo.owner, repo: context.repo.repo, workflow_id: "monitor.yml",
             });
