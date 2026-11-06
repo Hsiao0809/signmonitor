@@ -1,0 +1,140 @@
+name: Monitor
+
+# 獨立排程，不依賴其他 repo 或系統。
+# - 每 4 小時（UTC 4H K 收盤後約 10 分鐘）：推進短線清單的觸發、停損、目標
+# - 每天 01:20 UTC（台灣時間 09:20）：跑每日掃描（短線清單＋三家布局清單）
+#   Bybit 前一天的成交檔約 09:12 台灣時間公布；13:00 前沒公布會在下一輪重試
+# 公開 repo 的 Actions 不計分鐘額度。
+on:
+  schedule:
+    - cron: "10 0,4,8,12,16,20 * * *"
+    - cron: "20 1 * * *"
+  workflow_dispatch:
+    inputs:
+      daily:
+        description: 每日掃描（auto＝台灣時間 09:00 後當天第一輪；force＝現在就跑；skip＝只追蹤）
+        type: choice
+        options: [auto, force, skip]
+        default: auto
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+concurrency:
+  group: signmonitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Load issues
+        id: issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const { owner, repo } = context.repo;
+            const label = "signmonitor";
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: label });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner, repo, name: label, color: "fbca04",
+                description: "爆量觀察清單與追蹤成績",
+              });
+            }
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner, repo, state: "all", labels: label, per_page: 20,
+            });
+            async function ensure(title, file, prefix) {
+              let issue = issues.find((candidate) => candidate.title === title);
+              if (!issue) {
+                const created = await github.rest.issues.create({
+                  owner, repo, title, labels: [label],
+                  body: `# ${title}\n\n第一輪執行後會在這裡顯示。`,
+                });
+                issue = created.data;
+              } else if (issue.state !== "open") {
+                await github.rest.issues.update({ owner, repo, issue_number: issue.number, state: "open" });
+              }
+              fs.writeFileSync(file, issue.body || "", "utf8");
+              core.setOutput(`${prefix}number`, String(issue.number));
+              core.setOutput(`${prefix}url`, issue.html_url);
+            }
+            await ensure("短線清單", "issue-body.md", "");
+            await ensure("布局清單", "layout-body.md", "layout_");
+
+      - name: Restore Bybit daily cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/bybit-daily.json
+          key: bybit-daily-${{ github.run_id }}
+          restore-keys: bybit-daily-
+
+      - name: Run monitor
+        env:
+          DAILY_MODE: ${{ inputs.daily || 'auto' }}
+          ISSUE_URL: ${{ steps.issue.outputs.url }}
+          LAYOUT_URL: ${{ steps.issue.outputs.layout_url }}
+        run: >-
+          node src/run.mjs
+          --body issue-body.md --layout-body layout-body.md
+          --bybit-cache .cache/bybit-daily.json --out out
+          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL"
+
+      - name: Save Bybit daily cache
+        if: ${{ always() && hashFiles('.cache/bybit-daily.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/bybit-daily.json
+          key: bybit-daily-${{ github.run_id }}
+
+      - name: Update issues
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          LAYOUT_NUMBER: ${{ steps.issue.outputs.layout_number }}
+        with:
+          script: |
+            const fs = require("fs");
+            const { owner, repo } = context.repo;
+            async function put(numberEnv, bodyFile, commentFile) {
+              const issue_number = Number(process.env[numberEnv]);
+              if (fs.existsSync(bodyFile)) {
+                await github.rest.issues.update({ owner, repo, issue_number, body: fs.readFileSync(bodyFile, "utf8") });
+              }
+              if (fs.existsSync(commentFile)) {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body: fs.readFileSync(commentFile, "utf8") });
+              }
+            }
+            await put("ISSUE_NUMBER", "out/issue-body.md", "out/comment.md");
+            await put("LAYOUT_NUMBER", "out/layout-body.md", "out/layout-comment.md");
+
+      - name: Send Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node src/notify.mjs out
+
+      # 公開 repo 連續 60 天沒有新 commit，GitHub 會自動停用排程。
+      # 每週一的每日掃描順便重新啟用一次本 workflow，避免被停用。
+      - name: Keep schedule alive
+        if: ${{ github.event_name == 'schedule' && github.event.schedule == '20 1 * * *' }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (new Date().getUTCDay() !== 1) return;
+            await github.rest.actions.enableWorkflow({
+              owner: context.repo.owner, repo: context.repo.repo, workflow_id: "monitor.yml",
+            });
