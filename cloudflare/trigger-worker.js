@@ -327,7 +327,8 @@ h2 small{font-weight:400;font-size:12px}
 .sym{font-weight:700;color:var(--fg);text-decoration:none}.sym:hover{color:var(--acc)}
 .badge{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--chip);color:var(--acc);white-space:nowrap}
 .badge.bl{color:var(--up)}.badge.bs{color:var(--dn)}
-.tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--tag);color:var(--tagfg);font-weight:600}
+.tag{font-size:11px;padding:0 5px;border-radius:4px;border:1px solid var(--line);color:var(--mut);font-weight:600}
+.fl{font-size:10px;padding:0 4px;border-radius:4px;border:1px solid rgba(251,191,36,.35);color:#d6b25e;margin-left:4px;cursor:help;vertical-align:1px;white-space:nowrap}.wtxt{color:#d6b25e}
 .cat{font-size:12px;color:var(--mut)}
 .kv{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:4px;font-size:13px;font-variant-numeric:tabular-nums}
 .kv span{color:var(--mut);margin-right:4px;font-size:12px}
@@ -347,7 +348,7 @@ a{color:var(--acc)}
 .ct-comm{color:#fcd34d;border-color:rgba(252,211,77,.35);background:rgba(252,211,77,.08)}
 .age{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
 .mk{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}.mk:last-of-type{border-bottom:0}
-.rs{font-size:11px;font-weight:700;padding:1px 7px;border-radius:4px;background:var(--chip);color:var(--acc)}.rs.bad{background:var(--dn);color:#fff}.rs.good{background:var(--up);color:#0f1115}.rs.w{background:var(--tag);color:var(--tagfg)}
+.rs{font-size:11px;font-weight:700;padding:1px 7px;border-radius:4px;background:var(--chip);color:var(--acc)}.rs.bad{background:var(--dn);color:#fff}.rs.good{background:var(--up);color:#0f1115}.rs.w{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:600}
 .ov{padding:6px 0;border-top:1px solid var(--line)}.ov:first-child{border-top:0}.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
 .st{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:3px 0;font-size:13px}.dot{width:8px;height:8px;border-radius:50%;display:inline-block}.dot.good{background:var(--up)}.dot.bad{background:var(--dn)}
 .alert{margin-top:10px;border-color:var(--warn);color:var(--warn);font-size:13px}
@@ -419,7 +420,12 @@ function table(id,rows,cols,empty,sub){
     var x=sub?sub(r):'';
     return '<tr'+(x?' class="hs"':'')+'>'+cols.map(function(c,i){return '<td class="'+(i?'':'c0 ')+(c.n?'n ':'')+(c.m?'mh ':'')+(c.w?'wrap':'')+'"'+(i?' data-l="'+(c.ml||c.l)+'"':'')+(c.tt?' title="'+esc(c.tt(r))+'"':'')+'>'+c.v(r)+'</td>'}).join('')+'</tr>'+
       (x?'<tr class="subr"><td colspan="'+cols.length+'">'+x+'</td></tr>':'')}).join('')+'</tbody></table>'}
-function flagsOf(p){return (p.flags||[]).map(function(f){return '<div class="warn">'+esc(f)+'</div>'}).join('')}
+/* 持倉提醒：停損過寬標在停損欄、遠離觸發價標在現價欄；完整句子滑鼠停上去看。其他種類的提醒標在代號旁 */
+function flagOf(p,key){return (p.flags||[]).filter(function(f){return f.indexOf(key)>=0})[0]||null}
+function flTag(f,txt){return f?'<span class="fl" title="'+esc(f)+'">'+txt+'</span>':''}
+function stopCell(p){var f=flagOf(p,'停損距離');return fp(p.stop)+' <span class="'+(f?'wtxt':'cat')+'">'+(p.riskPct||0).toFixed(1)+'%</span>'+flTag(f,'過寬')}
+function pxCell(p,px){return FP(p.ex,px)+flTag(flagOf(p,'遠離'),'遠離')}
+function otherFlags(p){return (p.flags||[]).filter(function(f){return f.indexOf('停損距離')<0&&f.indexOf('遠離')<0}).map(function(f){return flTag(f,'提醒')}).join('')}
 function colOf(t,k){return COLS[t]().filter(function(c){return c.k===k})[0]}
 
 /* ---------- 各表格的欄位 ---------- */
@@ -450,12 +456,12 @@ var COLS={
     {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'},
       tt:function(a){return Object.keys(a.others||{}).map(function(v){return VL[v]+' '+a.others[v]+'x'}).join('｜')||'其他家無此合約或資料不足'}}]},
   open:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+WT(p.base)+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span>'+(p.t1Hit?'<span class="badge">T1 ✓</span>':'')+'</div>'}},
-    {k:'px',l:'現價',n:1,v:function(p){return FP(p.ex,LP(p.ex,p.id))}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+WT(p.base)+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span>'+(p.t1Hit?'<span class="badge">T1 ✓</span>':'')+otherFlags(p)+'</div>'}},
+    {k:'px',l:'現價',n:1,v:function(p){return pxCell(p,LP(p.ex,p.id))}},
     {k:'r',l:'目前',n:1,s:function(p){return rNow(p,LP(p.ex,p.id))},v:function(p){return '<b>'+rr(rNow(p,LP(p.ex,p.id)))+'</b>'}},
     {k:'toStop',l:'距停損',n:1,dd:1,s:function(p){return toStop(p,LP(p.ex,p.id))},v:function(p){var d=toStop(p,LP(p.ex,p.id));return d==null?'—':'<span class="'+(d<2?'dn big':'')+'">'+d.toFixed(1)+'%</span>'}},
     {k:'entry',l:'進場',n:1,v:function(p){return fp(p.entry)}},
-    {k:'stop',l:'停損',n:1,v:function(p){return fp(p.stop)+' <span class="cat">'+(p.riskPct||0).toFixed(1)+'%</span>'}},
+    {k:'stop',l:'停損',n:1,v:stopCell},
     {k:'t12',l:'T1／T2',n:1,v:function(p){return fp(p.t1)+'／'+fp(p.t2)}},
     {k:'mfe',l:'最大有利',n:1,m:1,s:function(p){return p.mfeR||0},v:function(p){return '+'+(p.mfeR||0).toFixed(1)+'R'}},
     {k:'trigT',l:'觸發',s:function(p){return p.trigT},v:function(p){return tpe(p.trigT)}}]},
@@ -569,7 +575,7 @@ function todo(){
       if(r!=null&&r<=-0.7){why='接近停損';cls='bad'}else if(r!=null&&r>=2.7){why='接近 T2';cls='good'}else if(r!=null&&r>=1.7&&!p.t1Hit){why='接近 T1';cls='good'}
       else if(p.trigT>=now-H8){why='新觸發'}
       if(!why)return;
-      out.push({k:0,h:item(why,cls,p.base,tv(p.ex,p.id,'240'),kvs([['方向',SIDE[p.side]],['現價',FP(p.ex,px)],['目前',rr(r)],['距停損',px==null?'—':toStop(p,px).toFixed(1)+'%'],['停損',fp(p.stop)],['T1／T2',fp(p.t1)+'／'+fp(p.t2)]]),CT(p.cat)+'<span class="cat">短線持倉</span>',p.flags)})});
+      out.push({k:0,h:item(why,cls,p.base,tv(p.ex,p.id,'240'),kvs([['方向',SIDE[p.side]],['現價',pxCell(p,px)],['目前',rr(r)],['距停損',px==null?'—':toStop(p,px).toFixed(1)+'%'],['停損',stopCell(p)],['T1／T2',fp(p.t1)+'／'+fp(p.t2)]]),CT(p.cat)+'<span class="cat">短線持倉</span>'+otherFlags(p))})});
     sh.pending.forEach(function(c){
       var px=LP(c.ex,c.id);if(px==null)return;
       var side=px>c.hi?'long':px<c.lo?'short':null;if(!side)return;
@@ -664,7 +670,7 @@ function short(){
     s+=panel('成績 '+stat(cl,function(p){return p.r},function(v){return (v>=0?'+':'')+v.toFixed(2)+'R'})+'<small>　最近 100 筆</small>',table('shC',cl,COLS.shC(),'尚無已結算'),'grow');
   }else{
     var op=x.open.filter(function(p){return P(p)&&S1(p)});CNT=[op.length,x.open.length];
-    s+=panel('持倉中 <small>'+op.length+'</small>',table('open',op,COLS.open(),'無',flagsOf),'grow');
+    s+=panel('持倉中 <small>'+op.length+'</small>',table('open',op,COLS.open(),'無'),'grow');
   }
   return s+'</div>'}
 
