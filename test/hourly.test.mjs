@@ -87,3 +87,43 @@ test('狀態可寫進 Issue 並讀回', () => {
   assert.equal(HR.extractHourly(HR.embedHourly('# x', s)).lastHour, T);
   assert.equal(HR.extractHourly('<!-- HOURLY_STATE\n壞\nHOURLY_STATE -->'), null);
 });
+
+test('週末休市標記：股票、商品依紐約時間判斷，加密不標', () => {
+  const sat = Date.UTC(2026, 10, 7, 2);              /* 週六 10:00 台灣＝週五 21:00 紐約 */
+  assert.equal(HR.weekendClosed(sat, 'stock'), true);
+  assert.equal(HR.weekendClosed(sat, 'comm'), true);
+  assert.equal(HR.weekendClosed(sat, 'crypto'), false);
+  assert.equal(HR.weekendClosed(Date.UTC(2026, 10, 6, 19), 'stock'), false);   /* 週五 14:00 紐約盤中 */
+  assert.equal(HR.weekendClosed(Date.UTC(2026, 10, 9, 0), 'comm'), false);     /* 週日 19:00 紐約，期貨已開 */
+  assert.equal(HR.weekendClosed(Date.UTC(2026, 10, 9, 0), 'stock'), true);
+  assert.equal(HR.weekendClosed(Date.UTC(2026, 10, 9, 10), 'stock'), false);   /* 週一 05:00 紐約盤前 */
+  assert.equal(HR.weekendClosed(T, 'stock'), false);
+});
+
+test('週末休市的爆量照常通知，加標記並排在後面', () => {
+  const sat = Date.UTC(2026, 10, 7, 2);
+  const big = { x1: 12, x2: 6, qv: 2e6, chg: 0.01, price: 100 };
+  const a = HR.pickAlerts(HR.emptyHourly(), [
+    { venue: 'bybit', sym: 'ADBEUSDT', base: 'ADBE', cat: 'stock', stats: { ...big, x1: 20 } },
+    { venue: 'okx', sym: 'PYTH-USDT-SWAP', base: 'PYTH', cat: 'crypto', stats: big }
+  ], sat);
+  assert.equal(a.length, 2);
+  assert.deepEqual(a.map(x => x.base), ['PYTH', 'ADBE']);
+  const txt = HR.hourlyAlertText(a, sat);
+  assert.match(txt, /【週末休市】<a href="[^"]*">ADBE|【週末休市】ADBE|【週末休市】\[ADBE\]|【週末休市】.*ADBE/);
+  assert.match(txt, /訊號可靠度較低/);
+});
+
+test('同一檔多家同時爆量只推播一則', () => {
+  const s = HR.emptyHourly();
+  const a = HR.pickAlerts(s, [
+    { venue: 'bitget', sym: 'BTWUSDT', base: 'BTW', cat: 'crypto', stats: { x1: 8.8, x2: 5.7, qv: 687e3, chg: -0.078, price: 1.188 } },
+    { venue: 'okx', sym: 'BTW-USDT-SWAP', base: 'BTW', cat: 'crypto', stats: { x1: 7.5, x2: 3.5, qv: 1.9e6, chg: -0.075, price: 1.193 } }
+  ], T);
+  assert.equal(a.length, 2);                          /* 清單頁仍保留各家紀錄 */
+  const txt = HR.hourlyAlertText(a, T);
+  assert.match(txt, /（1 檔）/);
+  assert.equal(txt.match(/★/g).length, 1);
+  assert.match(txt, /Bitget＋OKX 同時 ★8\.8x/);
+  assert.match(txt, /成交額 Bitget 687K＋OKX 1\.9M/);
+});

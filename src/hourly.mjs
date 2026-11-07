@@ -33,6 +33,18 @@ const CAT = { crypto: '加密', stock: '股票', comm: '商品' };
 const median = a => { const s = a.slice().sort((x, y) => x - y); const n = s.length; return n ? (n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; };
 const isWeekend = t => { const d = new Date(t).getUTCDay(); return d === 0 || d === 6; };
 
+/* 標的現貨市場週末休市（紐約時間）：股票 週五 20:00（盤後結束）～週一 04:00（盤前開始）；
+   商品期貨 週五 17:00～週日 18:00。休市時段的爆量照常通知，只加【週末休市】標記並排在後面。 */
+const NYF = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', hour12: false });
+const DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+export function weekendClosed(t, cat) {
+  const p = Object.fromEntries(NYF.formatToParts(new Date(t)).map(x => [x.type, x.value]));
+  const d = DOW[p.weekday], h = +p.hour % 24;
+  if (cat === 'stock') return (d === 5 && h >= 20) || d === 6 || d === 0 || (d === 1 && h < 4);
+  if (cat === 'comm') return (d === 5 && h >= 17) || d === 6 || (d === 0 && h < 18);
+  return false;
+}
+
 export function emptyHourly() { return { version: 1, last: {}, recent: [], lastHour: null }; }
 
 /**
@@ -89,16 +101,30 @@ export function pickAlerts(state, entries, T, cfg = HOURLY) {
     alerts.push({
       t: T, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat,
       x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1), qv: Math.round(e.stats.qv), chg: +(e.stats.chg * 100).toFixed(2),
-      price: e.stats.price, watch: !!e.watch,
+      price: e.stats.price, watch: !!e.watch, closed: weekendClosed(T, e.cat),
       others: othersX, spikedOthers, single
     });
     state.last[key] = { t: T, x1: e.stats.x1 };
   }
-  alerts.sort((a, b) => (b.watch - a.watch) || (b.single - a.single) || b.x1 - a.x1);
+  alerts.sort(order);
   state.recent = [...alerts, ...state.recent].filter(a => T - a.t < cfg.keepHours * H);
   for (const k of Object.keys(state.last)) if (T - state.last[k].t > cfg.keepHours * H) delete state.last[k];
   state.lastHour = T;
   return alerts;
+}
+
+const order = (a, b) => (b.watch - a.watch) || (a.closed - b.closed) || (b.single - a.single) || b.x1 - a.x1;
+
+/* 同一檔在多家同時爆量時，推播合併成一則：以倍數最高的那家為主，其他家的成交額附在後面 */
+export function mergeByBase(alerts) {
+  const groups = new Map();
+  for (const a of alerts) { const g = groups.get(a.base) || []; g.push(a); groups.set(a.base, g); }
+  return [...groups.values()].map(g => {
+    if (g.length === 1) return g[0];
+    const [main, ...rest] = g.slice().sort((a, b) => b.x1 - a.x1);
+    const venues = new Set([main.venue, ...main.spikedOthers, ...rest.map(r => r.venue)]);
+    return { ...main, watch: g.some(a => a.watch), single: false, spikedOthers: [...venues].filter(v => v !== main.venue), also: rest };
+  }).sort(order);
 }
 
 /* ---------------- 文字 ---------------- */
@@ -117,12 +143,15 @@ function othersLine(a) {
 
 export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY) {
   if (!alerts.length) return '';
+  alerts = mergeByBase(alerts);
   const L = [`【盤中爆量】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${alerts.length} 檔）`];
   alerts.slice(0, cfg.maxLines).forEach(a => {
-    L.push(`${a.watch ? '【自選】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★${a.x1}x 同時段／${a.x2}x 近48h`);
-    L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（1H ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}%）｜成交額 ${money(a.qv)}`);
+    L.push(`${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★${a.x1}x 同時段／${a.x2}x 近48h`);
+    const qv = a.also ? [a, ...a.also].map(x => `${VL[x.venue]} ${money(x.qv)}`).join('＋') : money(a.qv);
+    L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（1H ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}%）｜成交額 ${qv}`);
     L.push(`  ${othersLine(a)}`);
   });
+  if (alerts.some(a => a.closed)) L.push('【週末休市】＝標的現貨市場休市中，成交多半集中在少數交易所，訊號可靠度較低');
   if (alerts.length > cfg.maxLines) L.push(`另有 ${alerts.length - cfg.maxLines} 檔，見清單頁`);
   if (warnings.length) L.push(`資料警告：${warnings.join('；')}`);
   if (url) L.push(url);
@@ -141,7 +170,7 @@ export function hourlyMarkdown(state, { nowMs, warnings = [], note = '' }, cfg =
     L.push('| 時間 | 標的 | 交易所 | 同時段倍數 | 近48h倍數 | 收盤價 | 1H 漲跌 | 成交額 | 其他家同時段 |');
     L.push('|---|---|---|---|---|---|---|---|---|');
     state.recent.slice(0, 200).forEach(a => L.push(
-      `| ${tpe(a.t).slice(5, 16)} | ${a.watch ? '【自選】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］ | ${kind(a)} | ${a.x1}x | ${a.x2}x | ${a.price ? fmtP(a.price) : '—'} | ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}% | ${money(a.qv)} | ${othersLine(a)} |`));
+      `| ${tpe(a.t).slice(5, 16)} | ${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］ | ${kind(a)} | ${a.x1}x | ${a.x2}x | ${a.price ? fmtP(a.price) : '—'} | ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}% | ${money(a.qv)} | ${othersLine(a)} |`));
   } else L.push('無');
   if (warnings.length) { L.push(''); L.push(`## 資料警告（${warnings.length}）`); warnings.slice(0, 20).forEach(w => L.push(`- ${w}`)); }
   L.push('');

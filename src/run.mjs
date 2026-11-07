@@ -208,7 +208,9 @@ async function main() {
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
   if (dailyMsg) msgs.push(dailyMsg);
   if (layout) msgs.push(Lay.layoutDailyText(layout.added, layout.events, lstate) + (a['layout-url'] ? `\n${a['layout-url']}` : ''));
-  else if (doDaily) msgs.push(`訊號掃描台｜每日掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${warnings.filter(w => w.startsWith('每日')).join('\n')}`);
+  /* 只有真的失敗才發失敗通知；布局清單等 Bybit 成交檔是延後，不是失敗 */
+  const failed = warnings.filter(w => w.startsWith('每日掃描失敗') || w.startsWith('布局清單掃描失敗'));
+  if (failed.length) msgs.push(`訊號掃描台｜掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${failed.join('\n')}`);
   const ev = T.hourlyText(events, daily ? '' : issueUrl, CFG);
   if (ev) msgs.push(ev);
   /* Telegram 以 HTML 格式發送，標的名稱可直接點開 TradingView；先切段再轉換，避免標籤被切斷 */
