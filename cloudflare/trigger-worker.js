@@ -256,8 +256,10 @@ const PAGE = `<!doctype html>
 /* 固定深色模式（不跟著手機／電腦的淺色設定） */
 :root{color-scheme:dark;--bg:#0f1115;--card:#171a20;--fg:#e8eaed;--mut:#9aa0a6;--line:#262b34;--acc:#60a5fa;--up:#34d399;--dn:#f87171;--warn:#fbbf24;--chip:#1d2433;--tag:#3a2e12;--tagfg:#fcd34d}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg)}
-body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC",sans-serif;-webkit-text-size-adjust:100%}
-header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px 0}
+/* 整頁不捲動：標題與分頁固定在上方，只有下方內容區捲動 */
+html,body{height:100%;overflow:hidden}
+body{display:flex;flex-direction:column;height:100vh;height:100dvh;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC",sans-serif;-webkit-text-size-adjust:100%}
+header{flex:none;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px 0}
 .top{display:flex;align-items:center;gap:8px;max-width:720px;margin:0 auto}
 .top h1{font-size:17px;margin:0;flex:1}.top .upd{font-size:12px;color:var(--mut)}
 .btn{font:inherit;font-size:14px;padding:8px 12px;border:0;border-radius:8px;background:var(--acc);color:#fff;cursor:pointer;white-space:nowrap}
@@ -266,7 +268,7 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px so
 nav{display:flex;gap:4px;max-width:720px;margin:8px auto 0;overflow-x:auto}
 nav button{flex:1;font:inherit;font-size:14px;padding:8px 6px;border:0;background:transparent;color:var(--mut);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
 nav button.on{color:var(--fg);border-bottom-color:var(--acc);font-weight:600}
-main{max-width:720px;margin:0 auto;padding:12px 16px 48px}
+main{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px max(16px,calc((100% - 720px)/2)) 48px}
 .bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .bar select,.bar input{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
 .pill{font:inherit;font-size:13px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut);cursor:pointer}
@@ -572,7 +574,7 @@ function bind(){
     $('add').onclick=function(){var v=inp.value.trim().toUpperCase();if(v)change('add',v)};
     $('pwsave').onclick=function(){PW=$('pw').value.trim();try{localStorage.setItem('sm_pw',PW)}catch(e){}$('pwcard').style.display=PW?'none':'block'};
   }}
-function draw(){if(!D)return;$('main').innerHTML=({home:home,hourly:hourly,short:short,layout:layout,cross:cross,watch:watch})[TAB]();bind()}
+function draw(){if(!D)return;$('main').scrollTop=0;$('main').innerHTML=({home:home,hourly:hourly,short:short,layout:layout,cross:cross,watch:watch})[TAB]();bind()}
 function load(){
   $('reload').disabled=true;
   fetch('/api/data').then(function(r){return r.json()}).then(function(j){if(j.error)throw new Error(j.error);D=j;
