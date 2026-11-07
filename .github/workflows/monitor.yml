@@ -5,6 +5,7 @@ name: Monitor
 # - 盤中爆量：OKX／Bitget／Bybit 三家 1H 成交額異常
 # - 短線清單：補處理所有新收盤的 4H K（觸發、T1、停損、T2、逾時）
 # - 4H 金叉：Binance 現貨，每根 4H K 收盤後（台灣 00、04、08、12、16、20 點）判斷一次
+# - 掃流動性：短線／布局／自選標的，每根 4H K 收盤後標記一次（只在網頁，不推播）
 # - 每日掃描：台灣時間 09:00 後當天第一輪（布局清單等 Bybit 成交檔 09:12 公布後才跑）
 # GitHub 排程可能延遲或略過：晚於整點才啟動時改評估上一小時（Bybit 該小時會缺），
 # 每日掃描與 4H 追蹤則由下一輪自動補上。
@@ -80,6 +81,7 @@ jobs:
               "# 自選標的\n\n由 signmonitor 網頁管理；也可以直接編輯下面兩行標記之間的內容，一行一個代號（例如 APP、HYPE）。\n\n<!-- WATCHLIST -->\n<!-- /WATCHLIST -->\n");
             await ensure("金叉清單", "cross-body.md", "cross_");
             await ensure("行情快照", "snapshot-body.md", "snapshot_");
+            await ensure("掃流動性", "sweep-body.md", "sweep_");
 
       - name: Restore Bybit daily cache
         uses: actions/cache/restore@v4
@@ -97,7 +99,7 @@ jobs:
           CROSS_URL: ${{ steps.issue.outputs.cross_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md
           --bybit-cache .cache/bybit-daily.json --out out
           --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL"
 
@@ -116,6 +118,7 @@ jobs:
           HOURLY_NUMBER: ${{ steps.issue.outputs.hourly_number }}
           CROSS_NUMBER: ${{ steps.issue.outputs.cross_number }}
           SNAPSHOT_NUMBER: ${{ steps.issue.outputs.snapshot_number }}
+          SWEEP_NUMBER: ${{ steps.issue.outputs.sweep_number }}
         with:
           script: |
             const fs = require("fs");
@@ -134,6 +137,7 @@ jobs:
             await put("HOURLY_NUMBER", "out/hourly-body.md", "out/hourly-comment.md");
             await put("CROSS_NUMBER", "out/cross-body.md", "out/cross-comment.md");
             await put("SNAPSHOT_NUMBER", "out/snapshot-body.md", "out/none.md");
+            await put("SWEEP_NUMBER", "out/sweep-body.md", "out/none.md");
 
       - name: Send Telegram
         env:

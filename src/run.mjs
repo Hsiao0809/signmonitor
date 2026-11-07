@@ -6,6 +6,7 @@
    短線清單：讀取 Issue 狀態 →（每日一次）OKX 全市場爆量 → 每 4 小時用 4H 收盤推進
    布局清單：每日一次，OKX／Bitget／Bybit 三家分開算量 → 追蹤 60 天
    4H 金叉：每根 4H K 收盤後，Binance 現貨 EMA20 上穿 SMA30（A 級推播、追蹤 42 根）
+   掃流動性：每根 4H K 收盤後，短線／布局／自選標的的影線掃價位再收回（只標記，不推播）
    寫出各 Issue 本文、留言與 Telegram 訊息檔。
    ============================================================ */
 import fs from 'node:fs';
@@ -21,6 +22,8 @@ import { parseWatch } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
 import * as SN from './snapshot.mjs';
+import * as SW from './sweep.mjs';
+import * as SWS from './sweep-scan.mjs';
 
 T.setPatternScan(core.patternScan);
 const CFG = T.CONFIG;
@@ -115,8 +118,8 @@ async function main() {
   const doHourly = !a.now && a.hourly !== 'skip' && hstate.lastHour !== targetHour;
   const hw = [];
   let prep = null, capP = Promise.resolve({});
+  const watch = parseWatch(a['watch-body'] && fs.existsSync(a['watch-body']) ? fs.readFileSync(a['watch-body'], 'utf8') : '');
   if (doHourly) {
-    const watch = parseWatch(a['watch-body'] && fs.existsSync(a['watch-body']) ? fs.readFileSync(a['watch-body'], 'utf8') : '');
     if (watch.length) console.log(`watch: ${watch.join(',')}`);
     try { prep = await HS.prepare(cache, hw, watch); } catch (e) { hw.push(`盤中爆量準備失敗：${e.message}`); }
     if (prep && preClose) capP = V.bybitCaptureHour(prep.bybit.map(x => x.sym), targetHour);
@@ -176,9 +179,36 @@ async function main() {
       Lay.embedLayout(T.render(Lay.layoutMarkdown(lstate, { nowMs, warnings: layout.warnings, note }), 'md'), lstate));
   }
 
-  const fetch4h = item => core.EXCHANGES[item.ex].kl(item.id, '4h', 0, 120);
+  /* 抓過的 4H K 留著，掃流動性直接沿用 */
+  const bars4h = new Map();
+  const fetch4h = async item => {
+    const b = await core.EXCHANGES[item.ex].kl(item.id, '4h', 0, SW.SWEEP.barsShort);
+    if (b) bars4h.set(`${item.ex}:${item.id}`, b);
+    return b;
+  };
   const { events, warnings: w2 } = await T.advanceAll(state, fetch4h, nowMs, CFG);
   warnings.push(...w2);
+
+  /* ---------- 掃流動性：每根 4H K 收盤後一次；只標記、不推播，失敗只影響這一塊 ---------- */
+  let sweep = null;
+  const sweepBody = a['sweep-body'] && fs.existsSync(a['sweep-body']) ? fs.readFileSync(a['sweep-body'], 'utf8') : '';
+  const swstate = a.sweep === 'skip' ? null : SW.extractSweep(sweepBody);
+  if (a.sweep !== 'skip' && !swstate) console.log('sweep warning: 掃流動性 Issue 的狀態無法解析；為避免覆蓋，本輪略過');
+  const swBar = SW.barOpen(nowMs);
+  if (swstate && (swstate.lastBar !== swBar || a.sweep === 'force')) {
+    const sww = [], skipped = [];
+    try {
+      const list = await SWS.targets({ short: state, layout: lstate, watch }, sww, null, skipped);
+      const results = await SWS.collect(list, (ex, id) => bars4h.get(`${ex}:${id}`) || null, sww, skipped);
+      const before = new Set(swstate.events.map(e => `${e.base}|${e.t}|${e.side}`));
+      SW.apply(swstate, results, swBar, nowMs);
+      const added = swstate.events.filter(e => !before.has(`${e.base}|${e.t}|${e.side}`)).length;
+      const snote = `最近一次檢查：${T.tpe(swBar)}–${T.tpe(swBar + 4 * HOUR).slice(11)} 台灣時間這根 4H K；${results.length} 檔（K 線失敗 ${sww.filter(w => w.includes("K 線取得失敗")).length}），本輪新增 ${added} 筆${skipped.length ? `。略過：${skipped.join('、')}` : ''}`;
+      fs.writeFileSync(path.join(outDir, 'sweep-body.md'), SW.embedSweep(SW.sweepMarkdown(swstate, { nowMs, warnings: sww, note: snote }), swstate));
+      sweep = { n: results.length, events: swstate.events.length, added };
+    } catch (e) { sww.push(`掃流動性失敗：${e.message}`); }
+    sww.forEach(w => console.log('sweep warning:', w));
+  }
 
   const note = daily
     ? `每日掃描：${T.tpe(nowMs)} 台灣時間，${daily.exLabel}，${daily.universe.total} 檔，新進 ${daily.added.length} 檔`
@@ -281,6 +311,7 @@ async function main() {
     `layout=${layout ? `ok active=${lstate.active.length} added=${layout.added.length}` : (doLayout ? 'deferred' : 'skip')}`,
     `events=${events.length} warnings=${warnings.length}`,
     `snapshot=${snap ? `market=${snap.market.length} bitget=${Object.keys(snap.px.bitget).length} binance=${Object.keys(snap.px.binance).length}` : 'skip'}`,
+    `sweep=${sweep ? `targets=${sweep.n} events=${sweep.events} added=${sweep.added}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
     `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');
