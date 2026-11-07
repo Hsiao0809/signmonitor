@@ -1,6 +1,6 @@
 /* signmonitor Worker（Cloudflare）
    1. 定時觸發：每小時第 50 分呼叫 GitHub 啟動 monitor.yml（GitHub 自己的排程常延遲或不跑）
-   2. 網頁：盤中爆量、短線清單、布局清單的最新資料；新增、移除自選標的（存進 GitHub Issue「自選標的」）
+   2. 網頁：盤中爆量、短線清單、布局清單、4H 金叉的最新資料；新增、移除自選標的（存進 GitHub Issue「自選標的」）
    只動 Hsiao0809/signmonitor，不碰其他 repo。
 
    設定（Worker → Settings → Variables and Secrets，Type 選 Secret）：
@@ -72,13 +72,14 @@ const pick = (o, ks) => Object.fromEntries(ks.filter(k => o[k] !== undefined).ma
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls] = await Promise.all([
+  const [hs, ss, ls, cs] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
-    stateOf(by('布局清單')?.body, 'LAYOUT_STATE')
+    stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
+    stateOf(by('金叉清單')?.body, 'CROSS_STATE')
   ]);
-  const urls = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
-  const updated = Object.fromEntries(['盤中爆量', '短線清單', '布局清單'].map(t => [t, by(t)?.updated_at || null]));
+  const urls = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
+  const updated = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單'].map(t => [t, by(t)?.updated_at || null]));
   return {
     urls, updated,
     watch: parseWatch(by(WATCH_TITLE)?.body),
@@ -93,6 +94,12 @@ async function dashboard(env) {
       lastDay: ls.lastDay,
       active: (ls.active || []).map(c => pick(c, ['base', 'cat', 'day', 'dayT', 'entry', 'last', 'ret', 'ex', 'mae', 'mfe', 'age', 'spiked', 'single', 'venues', 'syms', 'ref', 'respikes'])),
       closed: (ls.closed || []).slice(-100)
+    } : null,
+    cross: cs ? {
+      lastBar: cs.lastBar, universe: cs.universe,
+      active: (cs.active || []).map(c => pick(c, ['sym', 'base', 'stock', 't', 'close', 'last', 'ret', 'mfe', 'mae', 'still', 'deadT', 'deadRet', 'volx', 'px200', 'spread', 'stopPx', 'stopPct', 'bars', 'qv24h'])),
+      recentB: (cs.recentB || []).slice(0, 150).map(c => pick(c, ['sym', 'base', 'stock', 't', 'close', 'volx', 'px200', 'reasons'])),
+      closed: (cs.closed || []).slice(-100)
     } : null
   };
 }
@@ -225,9 +232,10 @@ h2{font-size:14px;color:var(--mut);margin:16px 0 8px;font-weight:600}
 .wl .chips{flex:1;display:flex;flex-wrap:wrap;gap:6px}
 .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}.stat b{display:block;font-size:18px}.stat small{color:var(--mut)}
 a{color:var(--acc)}
+summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}summary h2:before{content:'▸ '}details[open] summary h2:before{content:'▾ '}
 </style></head><body>
 <header><div class="top"><h1>signmonitor</h1><span class="upd" id="upd"></span><button class="btn sec" id="reload">重新整理</button></div>
-<nav id="tabs"><button data-t="hourly" class="on">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="watch">自選</button></nav></header>
+<nav id="tabs"><button data-t="hourly" class="on">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="cross">金叉</button><button data-t="watch">自選</button></nav></header>
 <main id="main"><div class="empty">讀取中…</div></main>
 <script>
 var D=null,TAB='hourly',PW='';try{PW=localStorage.getItem('sm_pw')||''}catch(e){}
@@ -309,6 +317,31 @@ function layout(){
     '<div class="sub">'+vv+'</div></div>'});
   return s}
 
+function bn(sym){return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent('BINANCE:'+sym)+'&interval=240'}
+function stk(x){return x.stock?'<span class="tag">代幣化股</span>':''}
+function cross(){
+  var x=D.cross;if(!x)return '<div class="empty">還沒有金叉資料（第一次會在下一根 4H K 收盤後出現）</div>';
+  var s='<div class="sub" style="margin-bottom:8px">Binance 現貨 4H，EMA20 上穿 SMA30。最近檢查：'+(x.lastBar?tpe(x.lastBar)+'–'+tpe(x.lastBar+144e5).slice(6):'—')+' 那根 K　範圍 '+(x.universe||0)+' 檔</div>';
+  s+='<h2>A 級追蹤中（'+x.active.length+'）</h2><div class="sub" style="margin:-4px 0 8px">收盤 &gt; SMA200 且量 ≥ 1.5 倍；追蹤 42 根（7 天），死叉＝出場參考</div>';
+  if(!x.active.length)s+='<div class="empty">無</div>';
+  x.active.forEach(function(it){
+    var stt=it.deadT?'<span class="badge" style="color:var(--dn)">已死叉 '+pc100(it.deadRet)+'</span>':'<span class="badge" style="color:var(--up)">仍成立</span>';
+    s+='<div class="card"><div class="l1">'+link(it.base,bn(it.sym))+stk(it)+stt+'<span class="cat">'+tpe(it.t)+' 金叉</span></div>'+
+    '<div class="kv"><div><span>金叉收</span>'+fp(it.close)+'</div><div><span>現價</span>'+fp(it.last)+'</div><div><span>報酬</span><b class="big">'+pc100(it.ret)+'</b></div><div><span>最大漲</span>'+pc100(it.mfe)+'</div><div><span>最大跌</span>'+pc100(it.mae)+'</div><div><span>量</span>'+it.volx+'x</div><div><span>距SMA200</span>'+pc100(it.px200)+'</div><div><span>近6根低</span>'+fp(it.stopPx)+' (-'+(it.stopPct||0).toFixed(1)+'%)</div><div><span>根數</span>'+(it.bars||0)+'/42</div></div></div>'});
+  s+='<details'+(x.active.length?'':' open')+'><summary><h2 style="display:inline">B 級（48 小時內 '+x.recentB.length+'，不推播）</h2></summary>';
+  if(!x.recentB.length)s+='<div class="empty">無</div>';
+  x.recentB.forEach(function(it){
+    s+='<div class="card"><div class="l1">'+link(it.base,bn(it.sym))+stk(it)+'<span class="cat">'+tpe(it.t)+'</span></div>'+
+    '<div class="kv"><div><span>收</span>'+fp(it.close)+'</div><div><span>量</span>'+(it.volx==null?'—':it.volx+'x')+'</div><div><span>距SMA200</span>'+pc100(it.px200)+'</div></div><div class="sub">'+esc((it.reasons||[]).join('、'))+'</div></div>'});
+  s+='</details>';
+  var cl=x.closed||[];
+  s+='<h2>成績（已結算 '+cl.length+'）</h2>';
+  if(cl.length){var w=cl.filter(function(p){return p.exitRet>0}).length,sum=cl.reduce(function(a,p){return a+p.exitRet},0);
+    s+='<div class="card stat"><div><b>'+cl.length+'</b><small>筆數</small></div><div><b>'+(w/cl.length*100).toFixed(0)+'%</b><small>勝率</small></div><div><b>'+pc100(sum/cl.length)+'</b><small>平均（死叉出場）</small></div></div>';
+    cl.slice(-20).reverse().forEach(function(p){s+='<div class="card"><div class="l1">'+link(p.base,bn(p.sym))+stk(p)+'<span class="big">'+pc100(p.exitRet)+'</span><span class="cat">'+(p.deadT?'死叉出場':'滿 42 根')+'</span></div><div class="sub">'+tpe(p.t)+' 金叉　最大漲 '+pc100(p.mfe)+'／最大跌 '+pc100(p.mae)+'</div></div>'})}
+  else s+='<div class="empty">尚無（A 級追蹤滿 42 根後結算）</div>';
+  return s}
+
 var VC={};
 function watch(){
   var s='<div class="card" id="pwcard" style="display:'+(PW?'none':'block')+'"><div class="row"><input id="pw" type="password" placeholder="密碼（只需輸入一次）" style="text-transform:none"><button class="btn" id="pwsave">確定</button></div></div>';
@@ -355,7 +388,7 @@ function bind(){
     $('add').onclick=function(){var v=inp.value.trim().toUpperCase();if(v)change('add',v)};
     $('pwsave').onclick=function(){PW=$('pw').value.trim();try{localStorage.setItem('sm_pw',PW)}catch(e){}$('pwcard').style.display=PW?'none':'block'};
   }}
-function draw(){if(!D)return;$('main').innerHTML=({hourly:hourly,short:short,layout:layout,watch:watch})[TAB]();bind()}
+function draw(){if(!D)return;$('main').innerHTML=({hourly:hourly,short:short,layout:layout,cross:cross,watch:watch})[TAB]();bind()}
 function load(){
   $('reload').disabled=true;
   fetch('/api/data').then(function(r){return r.json()}).then(function(j){if(j.error)throw new Error(j.error);D=j;
