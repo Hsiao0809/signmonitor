@@ -107,7 +107,7 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 | 多模組重疊 | 同一檔同時出現在 2 個以上模組（盤中爆量、短線等待、短線持倉、布局、金叉 A／B） |
 | 系統狀態 | 各清單最後更新時間與逾時、資料警告內容、最近一次執行結果、即時報價來源是否抓得到 |
 
-開網頁時 Worker 另外抓 OKX、Bitget、Bybit、Binance 即時價（跟清單一起快取 60 秒）：持倉顯示現價、目前 R、距停損；等待中顯示距觸發價；布局、金叉報酬改用即時價。Bybit 會擋部分地區，抓不到時該格顯示「—」。
+價格來源：OKX、Bybit 是開網頁時 Worker 抓的即時價（跟清單一起快取 60 秒）；Binance、Bitget 會擋 Cloudflare 的連線，改用每輪監控寫進 Issue「行情快照」的價格（每小時，網頁標「1h」）。大盤 BTC、ETH 的 4H 狀態也來自行情快照。持倉顯示現價、目前 R、距停損；等待中顯示距觸發價；布局、金叉報酬用現價計算。抓不到價格時顯示「—」，不拿舊收盤價代替。
 
 其他分頁可看「盤中爆量」「短線」「布局」「金叉」的完整資料（可篩選交易所、類別、只看自選、只有一家爆量），「自選」分頁可新增、移除標的，需要輸入 Worker 設定的 `ADMIN_PASSWORD`。代號輸入會自動轉成大寫。網頁資料快取 60 秒。清單存在 Issue「自選標的」，也可以直接編輯該 Issue。
 
@@ -130,7 +130,7 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 ## 存放位置
 
-- Issue「短線清單」「布局清單」「盤中爆量」「金叉清單」「自選標的」：本文是最新清單與成績，狀態以壓縮形式存在本文最後的隱藏註解，不要手動刪除。每日報告與狀態變化留在留言。
+- Issue「短線清單」「布局清單」「盤中爆量」「金叉清單」「行情快照」「自選標的」：本文是最新清單與成績，狀態以壓縮形式存在本文最後的隱藏註解，不要手動刪除。每日報告與狀態變化留在留言。
 - Telegram：需要在 Settings → Secrets and variables → Actions 設定 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。沒設定時只寫 Issue。
 
 ## 檔案
@@ -142,6 +142,7 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 | `src/layout.mjs`、`src/layout-scan.mjs` | 布局清單 |
 | `src/hourly.mjs`、`src/hourly-scan.mjs` | 盤中爆量 |
 | `src/cross.mjs`、`src/cross-scan.mjs` | 4H 金叉（Binance 現貨） |
+| `src/snapshot.mjs` | 行情快照（給網頁：BTC／ETH 4H 狀態、Binance／Bitget 價格） |
 | `src/venues.mjs` | OKX、Bitget、Bybit 日線／1H 轉接器、Bybit WebSocket |
 | `src/run.mjs` | 每輪執行入口 |
 | `src/notify.mjs` | Telegram 通知 |

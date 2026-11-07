@@ -20,6 +20,7 @@ import * as HS from './hourly-scan.mjs';
 import { parseWatch } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
+import * as SN from './snapshot.mjs';
 
 T.setPatternScan(core.patternScan);
 const CFG = T.CONFIG;
@@ -240,6 +241,16 @@ async function main() {
   }
   HS.saveCache(cachePath, cache);
 
+  /* ---------- 行情快照（給網頁）：BTC／ETH 4H 狀態＋網頁抓不到的 Binance、Bitget 價格；失敗不影響其他 ---------- */
+  let snap = null;
+  if (a['snapshot'] !== 'skip') {
+    try {
+      snap = await SN.take(SN.needOf({ short: state, layout: lstate, hourly: hstate, cross: cstate }), Date.now());
+      fs.writeFileSync(path.join(outDir, 'snapshot-body.md'), SN.embedSnapshot(SN.snapshotMarkdown(snap), snap));
+      snap.warnings.forEach(w => console.log('snapshot warning:', w));
+    } catch (e) { console.log('snapshot warning:', e.message); }
+  }
+
   const msgs = [];
   const hmsg = HR.hourlyAlertText(halerts, targetHour, [], a['hourly-url'] || '');
   if (hmsg) msgs.push(hmsg);
@@ -269,6 +280,7 @@ async function main() {
     `pending=${state.pending.length} open=${state.open.length} closed=${state.closed.length}`,
     `layout=${layout ? `ok active=${lstate.active.length} added=${layout.added.length}` : (doLayout ? 'deferred' : 'skip')}`,
     `events=${events.length} warnings=${warnings.length}`,
+    `snapshot=${snap ? `market=${snap.market.length} bitget=${Object.keys(snap.px.bitget).length} binance=${Object.keys(snap.px.binance).length}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
     `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');

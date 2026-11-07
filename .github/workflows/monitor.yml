@@ -79,6 +79,7 @@ jobs:
             await ensure("自選標的", "watch-body.md", "watch_",
               "# 自選標的\n\n由 signmonitor 網頁管理；也可以直接編輯下面兩行標記之間的內容，一行一個代號（例如 APP、HYPE）。\n\n<!-- WATCHLIST -->\n<!-- /WATCHLIST -->\n");
             await ensure("金叉清單", "cross-body.md", "cross_");
+            await ensure("行情快照", "snapshot-body.md", "snapshot_");
 
       - name: Restore Bybit daily cache
         uses: actions/cache/restore@v4
@@ -114,6 +115,7 @@ jobs:
           LAYOUT_NUMBER: ${{ steps.issue.outputs.layout_number }}
           HOURLY_NUMBER: ${{ steps.issue.outputs.hourly_number }}
           CROSS_NUMBER: ${{ steps.issue.outputs.cross_number }}
+          SNAPSHOT_NUMBER: ${{ steps.issue.outputs.snapshot_number }}
         with:
           script: |
             const fs = require("fs");
@@ -131,6 +133,7 @@ jobs:
             await put("LAYOUT_NUMBER", "out/layout-body.md", "out/layout-comment.md");
             await put("HOURLY_NUMBER", "out/hourly-body.md", "out/hourly-comment.md");
             await put("CROSS_NUMBER", "out/cross-body.md", "out/cross-comment.md");
+            await put("SNAPSHOT_NUMBER", "out/snapshot-body.md", "out/none.md");
 
       - name: Send Telegram
         env:

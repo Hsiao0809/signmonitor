@@ -75,57 +75,23 @@ const pick = (o, ks) => Object.fromEntries(ks.filter(k => o[k] !== undefined).ma
 async function tj(url) {
   try { const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000) }); return r.ok ? await r.json() : null; } catch { return null; }
 }
-/* need：{ okx:Set(instId), bitget:Set(symbol), bybit:Set(symbol), binance:Set(symbol) } → { okx:{id:價}, ..., ok:{venue:true/false} } */
+/* need：{ okx:Set(instId), bybit:Set(symbol) } → { px:{ okx:{id:價}, bybit:{...} }, ok:{venue:true/false} } */
 async function livePrices(need) {
-  const px = { okx: {}, bitget: {}, bybit: {}, binance: {} }, ok = {};
+  const px = { okx: {}, bybit: {} }, ok = {};
   const few = (set, n) => set.size > 0 && set.size <= n;
   const jobs = [];
   if (need.okx.size) jobs.push(tj('https://www.okx.com/api/v5/market/tickers?instType=SWAP').then(j => {
     ok.okx = !!j?.data; (j?.data || []).forEach(t => { if (need.okx.has(t.instId)) px.okx[t.instId] = +t.last; });
   }));
-  /* Bitget、Bybit 只是備援來源，檔數少時逐檔抓，避免下載整份行情 */
-  if (few(need.bitget, 15)) jobs.push(Promise.all([...need.bitget].map(s => tj(`https://api.bitget.com/api/v2/mix/market/ticker?symbol=${s}&productType=USDT-FUTURES`).then(j => {
-    const t = j?.data?.[0]; if (t) { px.bitget[s] = +t.lastPr; ok.bitget = true; } else if (ok.bitget === undefined) ok.bitget = false;
-  }))));
-  else if (need.bitget.size) jobs.push(tj('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES').then(j => {
-    ok.bitget = !!j?.data; (j?.data || []).forEach(t => { if (need.bitget.has(t.symbol)) px.bitget[t.symbol] = +t.lastPr; });
-  }));
+  /* Bybit 只是備援來源，檔數少時逐檔抓，避免下載整份行情。Binance、Bitget 擋 Cloudflare，改用 GitHub 每小時的行情快照 */
   if (few(need.bybit, 10)) jobs.push(Promise.all([...need.bybit].map(s => tj(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${s}`).then(j => {
     const t = j?.result?.list?.[0]; if (t) { px.bybit[s] = +t.lastPrice; ok.bybit = true; } else if (ok.bybit === undefined) ok.bybit = false;
   }))));
   else if (need.bybit.size) jobs.push(tj('https://api.bybit.com/v5/market/tickers?category=linear').then(j => {
     ok.bybit = !!j?.result?.list; (j?.result?.list || []).forEach(t => { if (need.bybit.has(t.symbol)) px.bybit[t.symbol] = +t.lastPrice; });
   }));
-  if (need.binance.size) jobs.push(tj(`https://data-api.binance.vision/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify([...need.binance]))}`).then(j => {
-    ok.binance = Array.isArray(j); (Array.isArray(j) ? j : []).forEach(t => { px.binance[t.symbol] = +t.price; });
-  }));
   await Promise.all(jobs);
   return { px, ok };
-}
-/* BTC、ETH 的 4H 趨勢：EMA20／SMA30 狀態、上次交叉、距 SMA200、24h 漲跌（只用已收盤 K 判斷） */
-async function trendOf(base) {
-  let bars = null, src = 'Binance';
-  const b = await tj(`https://data-api.binance.vision/api/v3/klines?symbol=${base}USDT&interval=4h&limit=300`);
-  if (Array.isArray(b) && b.length > 230) bars = b.map(k => ({ t: +k[0], c: +k[4], ct: +k[6] }));
-  else {
-    const o = await tj(`https://www.okx.com/api/v5/market/candles?instId=${base}-USDT&bar=4H&limit=300`);
-    if (o?.data?.length > 230) { src = 'OKX'; bars = o.data.slice().reverse().map(k => ({ t: +k[0], c: +k[4], ct: +k[0] + 144e5 - 1 })); }
-  }
-  if (!bars) return null;
-  const now = Date.now(), last = bars[bars.length - 1].c;
-  const cl = bars.filter(x => x.ct < now), n = cl.length, k = 2 / 21;
-  const ema = [], sma = [];
-  let s30 = 0;
-  cl.forEach((x, i) => {
-    ema[i] = i ? x.c * k + ema[i - 1] * (1 - k) : x.c;
-    s30 += x.c; if (i >= 30) s30 -= cl[i - 30].c; sma[i] = i >= 29 ? s30 / 30 : null;
-  });
-  const s200 = cl.slice(-200).reduce((a, x) => a + x.c, 0) / 200;
-  const up = ema[n - 1] > sma[n - 1];
-  let since = null;
-  for (let i = n - 1; i > 30; i--) if ((ema[i] > sma[i]) !== (ema[i - 1] > sma[i - 1])) { since = cl[i].t; break; }
-  const ago = bars.find(x => x.t >= now - 864e5);
-  return { base, src, price: last, chg24: ago ? last / ago.c - 1 : null, up, since, px200: last / s200 - 1 };
 }
 async function lastRuns(env) {
   try {
@@ -143,25 +109,25 @@ function warningsOf(body) {
   return body.slice(i).split('\n').slice(1).filter(l => l.startsWith('- ')).map(l => l.slice(2)).slice(0, 10);
 }
 function needOf(d) {
-  const need = { okx: new Set(), bitget: new Set(), bybit: new Set(), binance: new Set() };
+  const need = { okx: new Set(), bybit: new Set() };
   const add = (v, id) => { if (v && id && need[v]) need[v].add(id); };
   if (d.short) [...d.short.pending, ...d.short.open].forEach(c => add(c.ex, c.id));
   if (d.layout) d.layout.active.forEach(it => { const v = layoutVenue(it); if (v) add(v, it.syms[v]); });
-  if (d.cross) [...d.cross.active, ...d.cross.recentB].forEach(c => add('binance', c.sym));
   if (d.hourly) d.hourly.recent.forEach(a => add(a.venue, a.sym));
   return need;
 }
-/* 布局清單用哪一家報價：OKX → Bitget → Bybit */
+/* 布局清單用哪一家報價：OKX → Bitget（快照）→ Bybit */
 function layoutVenue(it) { const s = it.syms || {}; return ['okx', 'bitget', 'bybit'].find(v => s[v]) || null; }
 
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls, cs] = await Promise.all([
+  const [hs, ss, ls, cs, sn] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
     stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
-    stateOf(by('金叉清單')?.body, 'CROSS_STATE')
+    stateOf(by('金叉清單')?.body, 'CROSS_STATE'),
+    stateOf(by('行情快照')?.body, 'SNAPSHOT_STATE')
   ]);
   const urls = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
   const updated = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單'].map(t => [t, by(t)?.updated_at || null]));
@@ -188,9 +154,11 @@ async function dashboard(env) {
       closed: (cs.closed || []).slice(-100)
     } : null
   };
-  const [live, btc, eth, runs] = await Promise.all([livePrices(needOf(d)), trendOf('BTC'), trendOf('ETH'), lastRuns(env)]);
+  const [live, runs] = await Promise.all([livePrices(needOf(d)), lastRuns(env)]);
   d.live = { ...live, at: Date.now() };
-  d.market = [btc, eth].filter(Boolean);
+  /* Binance、Bitget 價格與大盤：GitHub 每小時存的快照 */
+  d.snap = sn ? { t: sn.t, px: sn.px || {}, warnings: sn.warnings || [] } : null;
+  d.market = sn?.market || [];
   d.runs = runs;
   return d;
 }
@@ -327,6 +295,7 @@ a{color:var(--acc)}
 .ct-crypto{color:#c4b5fd;border-color:rgba(196,181,253,.35);background:rgba(196,181,253,.08)}
 .ct-stock{color:#5eead4;border-color:rgba(94,234,212,.35);background:rgba(94,234,212,.08)}
 .ct-comm{color:#fcd34d;border-color:rgba(252,211,77,.35);background:rgba(252,211,77,.08)}
+.age{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
 .mk{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-bottom:1px solid var(--line)}.mk:last-of-type{border-bottom:0}
 .rs{font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;background:var(--chip);color:var(--acc)}.rs.bad{background:var(--dn);color:#fff}.rs.good{background:var(--up);color:#fff}.rs.w{background:var(--tag);color:var(--tagfg)}
 .ov{padding:8px 0;border-top:1px solid var(--line)}.ov:first-child{border-top:0}.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
@@ -358,8 +327,12 @@ function inWatch(b){return D&&D.watch&&D.watch.indexOf(b)>=0}
 function pills(group,key,opts){return opts.map(function(o){return '<button class="pill'+(F[group][key]===o[0]?' on':'')+'" data-g="'+group+'" data-k="'+key+'" data-v="'+o[0]+'">'+o[1]+'</button>'}).join('')}
 
 /* ---------- 即時價格 ---------- */
-function LP(v,id){var L=D&&D.live&&D.live.px;var x=L&&L[v]&&L[v][id];return x&&isFinite(x)?x:null}
-function lpLayout(it){var sy=it.syms||{},v=['okx','bitget','bybit'].filter(function(k){return sy[k]})[0];return v?LP(v,sy[v]):null}
+/* 價格：OKX、Bybit 是開網頁時的即時價；Binance、Bitget 用 GitHub 每小時快照（標「1h」） */
+function LP(v,id){var L=D&&D.live&&D.live.px,S=D&&D.snap&&D.snap.px;var x=(L&&L[v]&&L[v][id])||(S&&S[v]&&S[v][id]);return x&&isFinite(x)?x:null}
+function isSnap(v){return v==='bitget'||v==='binance'}
+function FP(v,px){return px==null?'—':fp(px)+(isSnap(v)?'<span class="age">1h</span>':'')}
+function lvLayout(it){var sy=it.syms||{};return ['okx','bitget','bybit'].filter(function(k){return sy[k]})[0]||null}
+function lpLayout(it){var sy=it.syms||{},v=lvLayout(it);return v?LP(v,sy[v]):null}
 function rNow(p,px){if(px==null)return null;var risk=Math.abs(p.entry-p.stop);if(!risk)return null;return (p.side==='long'?px-p.entry:p.entry-px)/risk}
 function toStop(p,px){if(px==null)return null;return (p.side==='long'?(px-p.stop)/px:(p.stop-px)/px)*100}
 function rr(v){if(v==null)return '—';return '<span class="'+(v>=0?'up':'dn')+'">'+(v>=0?'+':'')+v.toFixed(2)+'R</span>'}
@@ -369,12 +342,12 @@ var H8=8*3600e3;
 /* ---------- 總覽 ---------- */
 function normBase(b,stock){b=String(b||'').toUpperCase();return stock&&/B$/.test(b)?b.slice(0,-1):b}
 function marketCard(){
-  var m=D.market||[];if(!m.length)return '<div class="card sub">大盤資料暫時抓不到</div>';
+  var m=D.market||[];if(!m.length)return '<div class="card sub">大盤資料還沒產生（每個整點更新一次）</div>';
   return '<div class="card">'+m.map(function(t){
     return '<div class="mk"><b class="sym">'+t.base+'</b><span>'+fp(t.price)+'</span><span>24h '+pc(t.chg24)+'</span>'+
     '<span class="badge" style="color:var('+(t.up?'--up':'--dn')+')">4H '+(t.up?'金叉中':'死叉中')+(t.since?'（自 '+tpe(t.since)+'）':'')+'</span>'+
     '<span>距 SMA200 '+pc(t.px200)+'</span></div>'}).join('')+
-    '<div class="sub">4H EMA20／SMA30。價格在 SMA200 下方時，金叉類做多訊號的回測表現偏弱。</div></div>'}
+    '<div class="sub">4H EMA20／SMA30，每小時更新'+(D.snap?'（'+tpe(D.snap.t)+'）':'')+'。價格在 SMA200 下方時，金叉類做多訊號的回測表現偏弱。</div></div>'}
 function item(reason,cls,name,url,extra,tags,notes){
   return '<div class="card it"><div class="l1"><span class="rs '+cls+'">'+reason+'</span>'+link(name,url)+(tags||'')+'</div>'+(extra?'<div class="kv">'+extra+'</div>':'')+
     (notes||[]).map(function(f){return '<div class="warn">'+esc(f)+'</div>'}).join('')+'</div>'}
@@ -389,17 +362,17 @@ function todo(){
       if(r!=null&&r<=-0.7){why='接近停損';cls='bad'}else if(r!=null&&r>=2.7){why='接近 T2';cls='good'}else if(r!=null&&r>=1.7&&!p.t1Hit){why='接近 T1';cls='good'}
       else if(p.trigT>=now-H8){why='新觸發'}
       if(!why)return;
-      out.push({k:0,h:item(why,cls,p.base,tv(p.ex,p.id,'240'),kvs([['方向',SIDE[p.side]],['現價',fp(px)],['目前',rr(r)],['距停損',px==null?'—':toStop(p,px).toFixed(1)+'%'],['停損',fp(p.stop)],['T1／T2',fp(p.t1)+'／'+fp(p.t2)]]),CT(p.cat)+'<span class=\"cat\">短線持倉</span>',p.flags)})});
+      out.push({k:0,h:item(why,cls,p.base,tv(p.ex,p.id,'240'),kvs([['方向',SIDE[p.side]],['現價',FP(p.ex,px)],['目前',rr(r)],['距停損',px==null?'—':toStop(p,px).toFixed(1)+'%'],['停損',fp(p.stop)],['T1／T2',fp(p.t1)+'／'+fp(p.t2)]]),CT(p.cat)+'<span class=\"cat\">短線持倉</span>',p.flags)})});
     sh.pending.forEach(function(c){
       var px=LP(c.ex,c.id);if(px==null)return;
       var side=px>c.hi?'long':px<c.lo?'short':null;if(!side)return;
-      out.push({k:1,h:item('越過觸發價','w',c.base,tv(c.ex,c.id,'240'),kvs([['方向',SIDE[side]],['現價',fp(px)],['觸發價',fp(side==='long'?c.hi:c.lo)],['爆量',c.vx+'x']]),'<span class="cat">短線等待・待 4H 收盤確認</span>')})});
+      out.push({k:1,h:item('越過觸發價','w',c.base,tv(c.ex,c.id,'240'),kvs([['方向',SIDE[side]],['現價',FP(c.ex,px)],['觸發價',fp(side==='long'?c.hi:c.lo)],['爆量',c.vx+'x']]),'<span class="cat">短線等待・待 4H 收盤確認</span>')})});
   }
   if(cr){
     cr.active.forEach(function(it){
       var px=LP('binance',it.sym);
-      if(it.deadT&&it.deadT+144e5>=now-H8)out.push({k:2,h:item('金叉已死叉','bad',it.base,bn(it.sym),kvs([['死叉出場',pc100(it.deadRet)],['現價',fp(px||it.last)]]),stk(it)+'<span class="cat">出場參考</span>')});
-      else if(it.t+144e5>=now-H8)out.push({k:2,h:item('新 A 級金叉','good',it.base,bn(it.sym),kvs([['金叉收',fp(it.close)],['現價',fp(px||it.last)],['量',it.volx+'x'],['距SMA200',pc100(it.px200)],['近6根低',fp(it.stopPx)+' (-'+(it.stopPct||0).toFixed(1)+'%)']]),stk(it))});
+      if(it.deadT&&it.deadT+144e5>=now-H8)out.push({k:2,h:item('金叉已死叉','bad',it.base,bn(it.sym),kvs([['死叉出場',pc100(it.deadRet)],['現價',FP('binance',px)]]),stk(it)+'<span class="cat">出場參考</span>')});
+      else if(it.t+144e5>=now-H8)out.push({k:2,h:item('新 A 級金叉','good',it.base,bn(it.sym),kvs([['金叉收',fp(it.close)],['現價',FP('binance',px)],['量',it.volx+'x'],['距SMA200',pc100(it.px200)],['近6根低',fp(it.stopPx)+' (-'+(it.stopPct||0).toFixed(1)+'%)']]),stk(it))});
     })}
   if(hr){
     var rec=hr.recent.filter(function(a){return a.t>=now-5*3600e3});
@@ -409,11 +382,11 @@ function todo(){
     var top=uniq.slice(0,5);
     uniq.forEach(function(a){if((a.watch||inWatch(a.base))&&top.indexOf(a)<0)top.push(a)});
     top.forEach(function(a){var px=LP(a.venue,a.sym);
-      out.push({k:3,h:item((a.watch||inWatch(a.base))?'自選爆量':'盤中爆量','w',a.base,tv(a.venue,a.sym,'60'),kvs([['倍數',a.x1+'x'],['時間',tpe(a.t)],['爆量收',fp(a.price)],['現價',fp(px)],['之後',px&&a.price?pc(px/a.price-1):'—']]),CT(a.cat)+'<span class=\"cat\">'+kindH(a)+'</span>')})});
+      out.push({k:3,h:item((a.watch||inWatch(a.base))?'自選爆量':'盤中爆量','w',a.base,tv(a.venue,a.sym,'60'),kvs([['倍數',a.x1+'x'],['時間',tpe(a.t)],['爆量收',fp(a.price)],['現價',FP(a.venue,px)],['之後',px&&a.price?pc(px/a.price-1):'—']]),CT(a.cat)+'<span class=\"cat\">'+kindH(a)+'</span>')})});
   }
   if(lay&&lay.lastDay){
     lay.active.filter(function(it){return it.day===lay.lastDay}).forEach(function(it){var px=lpLayout(it);
-      out.push({k:4,h:item('新進布局','w',it.base,layoutUrl(it),kvs([['爆量日收',fp(it.entry)],['現價',fp(px||it.last)],['報酬',px?pc(px/it.entry-1):pc(it.ret)]]),CT(it.cat)+'<span class=\"cat\">'+kindL(it)+'</span>')})});
+      out.push({k:4,h:item('新進布局','w',it.base,layoutUrl(it),kvs([['爆量日收',fp(it.entry)],['現價',FP(lvLayout(it),px)],['報酬',px?pc(px/it.entry-1):'—']]),CT(it.cat)+'<span class=\"cat\">'+kindL(it)+'</span>')})});
   }
   out.sort(function(a,b){return a.k-b.k});
   return out}
@@ -423,7 +396,7 @@ function overlap(){
   if(D.hourly)D.hourly.recent.forEach(function(a){add(normBase(a.base),'hourly',a.x1+'x '+tpe(a.t))});
   if(D.short){D.short.pending.forEach(function(c){add(normBase(c.base),'pend',c.vx+'x')});
     D.short.open.forEach(function(p){var r=rNow(p,LP(p.ex,p.id));add(normBase(p.base),'open',SIDE[p.side]+(r==null?'':' '+(r>=0?'+':'')+r.toFixed(1)+'R'))})}
-  if(D.layout)D.layout.active.forEach(function(it){var px=lpLayout(it);add(normBase(it.base),'layout',((px?px/it.entry-1:it.ret)*100).toFixed(1)+'%')});
+  if(D.layout)D.layout.active.forEach(function(it){var px=lpLayout(it);add(normBase(it.base),'layout',px?((px/it.entry-1)*100).toFixed(1)+'%':'日收 '+((it.ret||0)*100).toFixed(1)+'%')});
   if(D.cross){D.cross.active.forEach(function(it){add(normBase(it.base,it.stock),'crossA',it.deadT?'已死叉':'仍成立')});
     D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t))})}
   return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b]}}).filter(function(x){return x.n>=2})
@@ -437,13 +410,16 @@ function status(){
       w.map(function(x){return '<div class="warn">'+esc(x)+'</div>'}).join('')});
   var R=D.runs;
   if(R&&R.last)s+='<div class="st"><span class="dot '+(R.last.ok?'good':'bad')+'"></span><b>最近一次執行</b><span class="cat">'+(R.last.ok?'成功':'失敗')+'　'+tpe(Date.parse(R.last.at))+(R.running?'　目前有一輪正在跑':'')+(R.recentFail?'　最近 '+R.checked+' 輪失敗 '+R.recentFail+' 次':'')+'</span></div>';
-  var ok=(D.live&&D.live.ok)||{},names={okx:'OKX',bitget:'Bitget',bybit:'Bybit',binance:'Binance'};
+  var ok=(D.live&&D.live.ok)||{},names={okx:'OKX',bybit:'Bybit'};
   var ks=Object.keys(ok);
-  /* Bybit 會擋部分地區，抓不到只註記，不算異常 */
-  if(ks.length)s+='<div class="st"><span class="dot '+(liveBad()?'bad':'good')+'"></span><b>即時價格</b><span class="cat">'+ks.map(function(k){return names[k]+(ok[k]?' ✓':' 抓不到')}).join('　')+'</span></div>'+
-    (ok.bybit===false?'<div class="sub">Bybit 在你目前的連線地區抓不到報價，只在 Bybit 有的標的現價會顯示「—」</div>':'');
+  /* OKX 抓不到才算異常；Bybit 會擋部分地區，只註記 */
+  if(ks.length)s+='<div class="st"><span class="dot '+(ok.okx===false?'bad':'good')+'"></span><b>即時價格</b><span class="cat">'+ks.map(function(k){return names[k]+(ok[k]?' ✓':' 抓不到')}).join('　')+'</span></div>';
+  var sn=D.snap;
+  s+='<div class="st"><span class="dot '+(snapBad()?'bad':'good')+'"></span><b>每小時快照</b><span class="cat">'+(sn?'Binance、Bitget 價格與大盤　'+tpe(sn.t)+'（'+ago(sn.t)+'）':'尚無資料（下一個整點產生）')+'</span></div>'+
+    (sn?(sn.warnings||[]).map(function(x){return '<div class="warn">'+esc(x)+'</div>'}).join(''):'');
   return s+'</div>'}
-function liveBad(){var ok=(D.live&&D.live.ok)||{};return ['okx','bitget','binance'].some(function(k){return ok[k]===false})}
+function snapBad(){var sn=D.snap;return !sn||Date.now()-sn.t>2.5*3600e3||(sn.warnings||[]).length>0}
+function liveBad(){var ok=(D.live&&D.live.ok)||{};return ok.okx===false||snapBad()}
 function sysBad(){
   var bad=Object.keys(MODEXP).some(function(t){var u=D.updated&&D.updated[t]?Date.parse(D.updated[t]):0;return (u&&Date.now()-u>MODEXP[t]*3600e3)||((D.warnings&&D.warnings[t])||[]).length});
   return bad||(D.runs&&D.runs.last&&!D.runs.last.ok)||liveBad()}
@@ -479,7 +455,7 @@ function hourly(){
     if(a.t!==last){last=a.t;s+='<h2>'+tpe(a.t)+'–'+tpe(a.t+3600e3).slice(6)+'</h2>'}
     var o=Object.keys(a.others||{}).map(function(v){return VL[v]+' '+a.others[v]+'x'}).join('｜')||'其他家無此合約或資料不足';
     s+='<div class="card"><div class="l1">'+((a.watch||inWatch(a.base))?'<span class="tag">自選</span>':'')+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+'<span class="badge">'+kindH(a)+'</span></div>'+
-      '<div class="kv"><div><span>同時段</span><b class="big">'+a.x1+'x</b></div><div><span>近48h</span>'+a.x2+'x</div><div><span>爆量收</span>'+fp(a.price)+'</div><div><span>1H</span>'+pc100(a.chg)+'</div><div><span>成交額</span>'+money(a.qv)+'</div>'+(function(){var px=LP(a.venue,a.sym);return px?'<div><span>現價</span>'+fp(px)+'</div><div><span>之後</span>'+(a.price?pc(px/a.price-1):'—')+'</div>':''})()+'</div>'+
+      '<div class="kv"><div><span>同時段</span><b class="big">'+a.x1+'x</b></div><div><span>近48h</span>'+a.x2+'x</div><div><span>爆量收</span>'+fp(a.price)+'</div><div><span>1H</span>'+pc100(a.chg)+'</div><div><span>成交額</span>'+money(a.qv)+'</div>'+(function(){var px=LP(a.venue,a.sym);return px?'<div><span>現價</span>'+FP(a.venue,px)+'</div><div><span>之後</span>'+(a.price?pc(px/a.price-1):'—')+'</div>':''})()+'</div>'+
       '<div class="sub">'+esc(o)+'</div></div>'});
   return s}
 
@@ -490,7 +466,7 @@ function short(){
   if(!x.open.length)s+='<div class="empty">無</div>';
   x.open.slice().sort(function(a,b){return b.trigT-a.trigT}).forEach(function(p){
     s+='<div class="card"><div class="l1">'+(inWatch(p.base)?'<span class="tag">自選</span>':'')+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+'<span class="badge">'+SIDE[p.side]+'</span>'+(p.t1Hit?'<span class="badge">T1 ✓</span>':'')+'</div>'+
-    (function(){var px=LP(p.ex,p.id),r=rNow(p,px);return '<div class="kv"><div><span>現價</span><b class="big">'+fp(px)+'</b></div><div><span>目前</span><b class="big">'+rr(r)+'</b></div><div><span>距停損</span>'+(px==null?'—':toStop(p,px).toFixed(1)+'%')+'</div></div>'})()+
+    (function(){var px=LP(p.ex,p.id),r=rNow(p,px);return '<div class="kv"><div><span>現價</span><b class="big">'+FP(p.ex,px)+'</b></div><div><span>目前</span><b class="big">'+rr(r)+'</b></div><div><span>距停損</span>'+(px==null?'—':toStop(p,px).toFixed(1)+'%')+'</div></div>'})()+
     '<div class="kv"><div><span>進場</span>'+fp(p.entry)+'</div><div><span>停損</span>'+fp(p.stop)+' ('+(p.riskPct||0).toFixed(1)+'%)</div><div><span>T1</span>'+fp(p.t1)+'</div><div><span>T2</span>'+fp(p.t2)+'</div><div><span>最大有利</span>+'+(p.mfeR||0).toFixed(1)+'R</div><div><span>觸發</span>'+tpe(p.trigT)+'</div></div>'+
     ((p.flags||[]).map(function(f){return '<div class="warn">'+esc(f)+'</div>'}).join(''))+'</div>'});
   s+='<h2>等待觸發（'+x.pending.length+'）</h2>';
@@ -499,7 +475,7 @@ function short(){
     s+='<div class="card"><div class="l1">'+(inWatch(c.base)?'<span class="tag">自選</span>':'')+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+'<span class="badge">'+c.vx+'x</span><span class="cat">'+(PAT[c.pattern]||'')+'</span></div>'+
     '<div class="kv"><div><span>爆量日</span>'+md(c.dayT)+' '+pc100(c.chgDay)+'</div><div><span>收</span>'+fp(c.close)+'</div><div><span>做多</span>4H 收 &gt; '+fp(c.hi)+'</div><div><span>做空</span>4H 收 &lt; '+fp(c.lo)+'</div>'+(function(){var px=LP(c.ex,c.id);if(px==null)return '';
       var st=px>c.hi?'<b class="up">已越過做多價</b>':px<c.lo?'<b class="dn">已跌破做空價</b>':'距做多 '+((c.hi/px-1)*100).toFixed(1)+'%／距做空 '+((1-c.lo/px)*100).toFixed(1)+'%';
-      return '<div><span>現價</span>'+fp(px)+'</div><div>'+st+'</div>'})()+'</div></div>'});
+      return '<div><span>現價</span>'+FP(c.ex,px)+'</div><div>'+st+'</div>'})()+'</div></div>'});
   var cl=x.closed||[];
   s+='<h2>成績（已結算 '+cl.length+'）</h2>';
   if(cl.length){var w=cl.filter(function(p){return p.r>0}).length,sum=cl.reduce(function(a,p){return a+p.r},0);
@@ -521,7 +497,7 @@ function layout(){
   list.forEach(function(it){
     var vv=['okx','bitget','bybit'].map(function(v){var q=it.venues&&it.venues[v];return q?(it.spiked.indexOf(v)>=0?'<b>'+VL[v]+' '+q.x+'x</b>':VL[v]+' '+q.x+'x'):VL[v]+' —'}).join('｜');
     s+='<div class="card"><div class="l1">'+(inWatch(it.base)?'<span class="tag">自選</span>':'')+lLink(it)+CT(it.cat)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+'</div>'+
-    '<div class="kv"><div><span>爆量日</span>'+it.day.slice(5)+'</div><div><span>天數</span>'+(it.age||0)+'</div><div><span>爆量日收</span>'+fp(it.entry)+'</div>'+(function(){var px=lpLayout(it);return px?'<div><span>現價</span>'+fp(px)+'</div><div><span>報酬</span><b>'+pc(px/it.entry-1)+'</b></div>':'<div><span>現價</span>'+fp(it.last)+'</div><div><span>報酬</span>'+pc(it.ret)+'</div>'})()+'<div><span>相對大盤</span>'+pc(it.ex)+'</div><div><span>最大回撤</span>'+pc(it.mae)+'</div></div>'+
+    '<div class="kv"><div><span>爆量日</span>'+it.day.slice(5)+'</div><div><span>天數</span>'+(it.age||0)+'</div><div><span>爆量日收</span>'+fp(it.entry)+'</div>'+(function(){var px=lpLayout(it);return px?'<div><span>現價</span>'+FP(lvLayout(it),px)+'</div><div><span>報酬</span><b>'+pc(px/it.entry-1)+'</b></div>':'<div><span>現價</span>—</div><div><span>日收報酬</span>'+pc(it.ret)+'</div>'})()+'<div><span>相對大盤</span>'+pc(it.ex)+'</div><div><span>最大回撤</span>'+pc(it.mae)+'</div></div>'+
     '<div class="sub">'+vv+'</div></div>'});
   return s}
 
@@ -535,7 +511,7 @@ function cross(){
   x.active.forEach(function(it){
     var stt=it.deadT?'<span class="badge" style="color:var(--dn)">已死叉 '+pc100(it.deadRet)+'</span>':'<span class="badge" style="color:var(--up)">仍成立</span>';
     s+='<div class="card"><div class="l1">'+link(it.base,bn(it.sym))+stk(it)+stt+'<span class="cat">'+tpe(it.t)+' 金叉</span></div>'+
-    '<div class="kv"><div><span>金叉收</span>'+fp(it.close)+'</div>'+(function(){var px=LP('binance',it.sym)||it.last;return '<div><span>現價</span>'+fp(px)+'</div><div><span>報酬</span><b class="big">'+pc(px/it.close-1)+'</b></div>'})()+'<div><span>最大漲</span>'+pc100(it.mfe)+'</div><div><span>最大跌</span>'+pc100(it.mae)+'</div><div><span>量</span>'+it.volx+'x</div><div><span>距SMA200</span>'+pc100(it.px200)+'</div><div><span>近6根低</span>'+fp(it.stopPx)+' (-'+(it.stopPct||0).toFixed(1)+'%)</div><div><span>根數</span>'+(it.bars||0)+'/42</div></div></div>'});
+    '<div class="kv"><div><span>金叉收</span>'+fp(it.close)+'</div>'+(function(){var px=LP('binance',it.sym);return px?'<div><span>現價</span>'+FP('binance',px)+'</div><div><span>報酬</span><b class="big">'+pc(px/it.close-1)+'</b></div>':'<div><span>現價</span>—</div><div><span>4H 收盤報酬</span><b class="big">'+pc100(it.ret)+'</b></div>'})()+'<div><span>最大漲</span>'+pc100(it.mfe)+'</div><div><span>最大跌</span>'+pc100(it.mae)+'</div><div><span>量</span>'+it.volx+'x</div><div><span>距SMA200</span>'+pc100(it.px200)+'</div><div><span>近6根低</span>'+fp(it.stopPx)+' (-'+(it.stopPct||0).toFixed(1)+'%)</div><div><span>根數</span>'+(it.bars||0)+'/42</div></div></div>'});
   s+='<details open><summary><h2 style="display:inline">B 級（48 小時內 '+x.recentB.length+'，不推播）</h2></summary>';
   if(!x.recentB.length)s+='<div class="empty">無</div>';
   x.recentB.forEach(function(it){
