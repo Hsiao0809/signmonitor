@@ -98,7 +98,18 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 ## 自選標的
 
-開啟 Cloudflare Worker 的網址（`signmonitor-trigger.<你的子網域>.workers.dev`）：上方分頁可看「盤中爆量」「短線」「布局」「金叉」的最新資料（可篩選交易所、類別、只看自選、只有一家爆量），「自選」分頁可新增、移除標的，需要輸入 Worker 設定的 `ADMIN_PASSWORD`。代號輸入會自動轉成大寫。網頁資料快取 60 秒。清單存在 Issue「自選標的」，也可以直接編輯該 Issue。
+開啟 Cloudflare Worker 的網址（`signmonitor-trigger.<你的子網域>.workers.dev`）。打開時固定先顯示「總覽」：
+
+| 區塊 | 內容 |
+|---|---|
+| 大盤 | BTC、ETH 的 4H EMA20／SMA30 狀態（金叉中／死叉中、從何時開始）、距 SMA200、24h 漲跌 |
+| 需要處理 | 持倉 ≤ -0.7R（接近停損）、≥ 1.7R 未碰 T1、≥ 2.7R（接近 T2）、8 小時內新觸發；等待中但現價已越過觸發價（待 4H 收盤確認）；8 小時內新 A 級金叉與死叉；最近 4 小時盤中爆量前 5 名＋自選；今天新進布局 |
+| 多模組重疊 | 同一檔同時出現在 2 個以上模組（盤中爆量、短線等待、短線持倉、布局、金叉 A／B） |
+| 系統狀態 | 各清單最後更新時間與逾時、資料警告內容、最近一次執行結果、即時報價來源是否抓得到 |
+
+開網頁時 Worker 另外抓 OKX、Bitget、Bybit、Binance 即時價（跟清單一起快取 60 秒）：持倉顯示現價、目前 R、距停損；等待中顯示距觸發價；布局、金叉報酬改用即時價。Bybit 會擋部分地區，抓不到時該格顯示「—」。
+
+其他分頁可看「盤中爆量」「短線」「布局」「金叉」的完整資料（可篩選交易所、類別、只看自選、只有一家爆量），「自選」分頁可新增、移除標的，需要輸入 Worker 設定的 `ADMIN_PASSWORD`。代號輸入會自動轉成大寫。網頁資料快取 60 秒。清單存在 Issue「自選標的」，也可以直接編輯該 Issue。
 
 | 項目 | 自選標的的規則 |
 |---|---|
@@ -107,6 +118,15 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 | Bybit 大檔 | BTC、ETH 等成交檔超過 40 MB 的不下載，改用每小時即時記錄累積基準（約 3 天後開始判斷） |
 
 短線清單與布局清單目前不受自選影響。
+
+## 網頁自動部署
+
+`cloudflare/` 有改動並推上 main 時，`deploy-worker.yml` 會用 wrangler 把 Worker 部署到 Cloudflare。需要在 Settings → Secrets and variables → Actions 設定：
+
+- Secrets：`CLOUDFLARE_API_TOKEN`（Cloudflare → My Profile → API Tokens → 用「Edit Cloudflare Workers」範本建立）、`CLOUDFLARE_ACCOUNT_ID`
+- Variables（選填）：`WORKER_NAME`，Cloudflare 上 Worker 的名稱，預設 `signmonitor-trigger`；名稱不同會另外建一個新的 Worker
+
+沒設定 Secrets 時自動略過，網頁要手動把 `cloudflare/trigger-worker.js` 貼到 Cloudflare。部署保留 Cloudflare 上已設定的變數與 Secret（`keep_vars = true`），Cron 一樣是每小時第 50 分。
 
 ## 存放位置
 

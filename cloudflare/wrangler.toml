@@ -1,0 +1,11 @@
+# signmonitor 網頁＋定時觸發的 Cloudflare Worker 設定（由 .github/workflows/deploy-worker.yml 自動部署）
+# Worker 名稱以 GitHub 變數 WORKER_NAME 為準（沒設就用 signmonitor-trigger），必須和 Cloudflare 上現有的名稱一樣。
+name = "signmonitor-trigger"
+main = "trigger-worker.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+# 保留在 Cloudflare 網頁上設定的變數；Secret（GITHUB_TOKEN、ADMIN_PASSWORD）本來就不會被部署覆蓋
+keep_vars = true
+
+[triggers]
+crons = ["50 * * * *"]

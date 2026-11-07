@@ -1,0 +1,51 @@
+name: Deploy Worker
+
+# cloudflare/ 資料夾有改動時，自動把網頁（Cloudflare Worker）部署上去。
+# 需要在 Settings → Secrets and variables → Actions 設定：
+#   Secrets：CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID
+#   Variables（選填）：WORKER_NAME（Cloudflare 上的 Worker 名稱，預設 signmonitor-trigger）
+# 沒設定 Secrets 時直接略過，不會失敗。只部署 signmonitor 自己的 Worker。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check secrets
+        id: check
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "未設定 CLOUDFLARE_API_TOKEN／CLOUDFLARE_ACCOUNT_ID，略過自動部署（網頁需手動更新）"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - name: Deploy
+        if: steps.check.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare
+          command: deploy --name ${{ vars.WORKER_NAME || 'signmonitor-trigger' }}
