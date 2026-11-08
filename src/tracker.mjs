@@ -1,3 +1,4 @@
+import { quietDay, atrPctAt } from './quiet.mjs';
 import zlib from 'node:zlib';
 
 /* ============================================================
@@ -127,11 +128,13 @@ export function candidateFrom(meta, daily, ex, nowMs, cfg = CONFIG) {
   if (!p || !(p.vx >= minX)) return null;
   const bar = daily[daily.length - 2];            /* 最後一根已收盤日線 = 爆量日 */
   if (!(bar.h > bar.l)) return null;
+  const q = quietDay(pct(bar.c, bar.o), atrPctAt(daily, daily.length - 2));
   return {
     key: `${ex}:${meta.id}`, ex, id: meta.id, base: meta.base, cat: meta.cat,
     dayT: bar.t, hi: bar.h, lo: bar.l, open: bar.o, close: bar.c,
     vx: +p.vx.toFixed(2), pattern: p.pattern,
     chgDay: +pct(bar.c, bar.o).toFixed(2),
+    quiet: q.quiet, qlim: q.lim, atrp: q.atr,       /* 量增價平 */
     addedAt: nowMs, lastBarT: bar.t + D - H4, status: 'pending'
   };
 }
@@ -318,7 +321,7 @@ export function dailyText({ nowMs, ex: exKey, exLabel, universe, added, rally, s
     const mx = typeof cfg.candMinX === 'number' ? `${cfg.candMinX}x` : `股票 ${cfg.candMinX.stock}x／加密 ${cfg.candMinX.crypto}x`;
     lines.push(`新進觀察清單 ${added.length} 檔（爆量 ≥ ${mx}，列前 ${top.length}）`);
     top.forEach(c => {
-      lines.push(`${tvItem(c)}［${CAT[c.cat]}］${c.vx}x 收 ${fmtP(c.close)}（${sgn(c.chgDay)}%）`);
+      lines.push(`${c.quiet ? '【量增價平】' : ''}${tvItem(c)}［${CAT[c.cat]}］${c.vx}x 收 ${fmtP(c.close)}（${sgn(c.chgDay)}%）`);
       lines.push(`  多：4H 收盤 >${fmtP(c.hi)}｜空：4H 收盤 <${fmtP(c.lo)}`);
     });
   } else {

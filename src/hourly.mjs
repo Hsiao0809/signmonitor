@@ -6,6 +6,7 @@
      - ≥ 每小時成交額下限
    就推播。同一家同一檔 dedupHours 小時內只通知一次，除非量再翻 reAlertMult 倍。
    ============================================================ */
+import { avgRangePct, quietHour } from './quiet.mjs';
 import zlib from 'node:zlib';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 
@@ -45,6 +46,9 @@ export function weekendClosed(t, cat) {
   return false;
 }
 
+/* 量增價平標記：quiet、門檻 qlim（%）、平常振幅 rng（%） */
+function quietOf(chgPct, rng, cat) { const q = quietHour(chgPct, rng ?? null, cat); return { quiet: q.quiet, qlim: q.lim, rng: q.rng }; }
+
 export function emptyHourly() { return { version: 1, last: {}, recent: [], lastHour: null }; }
 
 /**
@@ -71,7 +75,8 @@ export function hourStats(bars, T, cat, cfg = HOURLY) {
   const floor = Math.max(1, (cfg.floorQvHour[cat] ?? cfg.floorQvHour.crypto) * cfg.minBaseRatio);
   return {
     x1: cur.qv / Math.max(med, floor), x2: cur.qv / Math.max(mean, floor),
-    qv: cur.qv, chg: cur.o > 0 ? cur.c / cur.o - 1 : 0, price: cur.c
+    qv: cur.qv, chg: cur.o > 0 ? cur.c / cur.o - 1 : 0, price: cur.c,
+    rng: avgRangePct(bars, T)          /* 近 7 天平均 1H 振幅 %（量增價平用；Bybit 沒有歷史高低為 null） */
   };
 }
 
@@ -102,7 +107,8 @@ export function pickAlerts(state, entries, T, cfg = HOURLY) {
       t: T, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat,
       x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1), qv: Math.round(e.stats.qv), chg: +(e.stats.chg * 100).toFixed(2),
       price: e.stats.price, watch: !!e.watch, closed: weekendClosed(T, e.cat),
-      others: othersX, spikedOthers, single
+      others: othersX, spikedOthers, single,
+      ...quietOf(e.stats.chg * 100, e.stats.rng, e.cat)
     });
     state.last[key] = { t: T, x1: e.stats.x1 };
   }
@@ -113,7 +119,7 @@ export function pickAlerts(state, entries, T, cfg = HOURLY) {
   return alerts;
 }
 
-const order = (a, b) => (b.watch - a.watch) || (a.closed - b.closed) || (b.single - a.single) || b.x1 - a.x1;
+const order = (a, b) => (b.watch - a.watch) || ((b.quiet || false) - (a.quiet || false)) || (a.closed - b.closed) || (b.single - a.single) || b.x1 - a.x1;
 
 /* 同一檔在多家同時爆量時，推播合併成一則：以倍數最高的那家為主，其他家的成交額附在後面 */
 export function mergeByBase(alerts) {
@@ -146,7 +152,7 @@ export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY
   alerts = mergeByBase(alerts);
   const L = [`【盤中爆量】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${alerts.length} 檔）`];
   alerts.slice(0, cfg.maxLines).forEach(a => {
-    L.push(`${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★${a.x1}x 同時段／${a.x2}x 近48h`);
+    L.push(`${a.quiet ? '【量增價平】' : ''}${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★${a.x1}x 同時段／${a.x2}x 近48h`);
     const qv = a.also ? [a, ...a.also].map(x => `${VL[x.venue]} ${money(x.qv)}`).join('＋') : money(a.qv);
     L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（1H ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}%）｜成交額 ${qv}`);
     L.push(`  ${othersLine(a)}`);

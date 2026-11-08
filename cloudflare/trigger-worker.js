@@ -122,13 +122,14 @@ function layoutVenue(it) { const s = it.syms || {}; return ['okx', 'bitget', 'by
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls, cs, sn, sw] = await Promise.all([
+  const [hs, ss, ls, cs, sn, sw, qs] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
     stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
     stateOf(by('金叉清單')?.body, 'CROSS_STATE'),
     stateOf(by('行情快照')?.body, 'SNAPSHOT_STATE'),
-    stateOf(by('掃流動性')?.body, 'SWEEP_STATE')
+    stateOf(by('掃流動性')?.body, 'SWEEP_STATE'),
+    stateOf(by('量增價平')?.body, 'QUIET_STATE')
   ]);
   const urls = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
   const updated = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
@@ -139,13 +140,13 @@ async function dashboard(env) {
     hourly: hs ? { lastHour: hs.lastHour, recent: hs.recent || [] } : null,
     short: ss ? {
       lastDaily: ss.lastDaily,
-      pending: (ss.pending || []).map(c => pick(c, ['base', 'cat', 'ex', 'id', 'dayT', 'hi', 'lo', 'close', 'vx', 'chgDay', 'pattern'])),
+      pending: (ss.pending || []).map(c => pick(c, ['base', 'cat', 'ex', 'id', 'dayT', 'hi', 'lo', 'close', 'vx', 'chgDay', 'pattern', 'quiet', 'qlim', 'atrp'])),
       open: (ss.open || []).map(c => pick(c, ['base', 'cat', 'ex', 'id', 'dayT', 'vx', 'side', 'entry', 'stop', 't1', 't2', 'trigT', 'riskPct', 'mfeR', 'maeR', 't1Hit', 'flags'])),
       closed: (ss.closed || []).slice(-100)
     } : null,
     layout: ls ? {
       lastDay: ls.lastDay,
-      active: (ls.active || []).map(c => pick(c, ['base', 'cat', 'day', 'dayT', 'entry', 'last', 'ret', 'ex', 'mae', 'mfe', 'age', 'spiked', 'single', 'venues', 'syms', 'ref', 'respikes'])),
+      active: (ls.active || []).map(c => pick(c, ['base', 'cat', 'day', 'dayT', 'entry', 'last', 'ret', 'ex', 'mae', 'mfe', 'age', 'spiked', 'single', 'venues', 'syms', 'ref', 'respikes', 'quiet', 'qlim', 'atrp', 'chgDay'])),
       closed: (ls.closed || []).slice(-100)
     } : null,
     cross: cs ? {
@@ -154,6 +155,7 @@ async function dashboard(env) {
       recentB: (cs.recentB || []).slice(0, 150).map(c => pick(c, ['sym', 'base', 'stock', 't', 'close', 'volx', 'px200', 'reasons'])),
       closed: (cs.closed || []).slice(-100)
     } : null,
+    quiet: qs ? { items: qs.items || [], done: (qs.done || []).slice(-300) } : null,
     sweep: sw ? {
       lastBar: sw.lastBar, targets: sw.targets,
       events: (sw.events || []).map(e => pick(e, ['base', 'cat', 'ex', 'id', 'src', 't', 'side', 'lv', 'x', 'c', 'volx', 'wk', 'firstSeen']))
@@ -354,6 +356,8 @@ a{color:var(--acc)}
 .sw{font-size:10px;padding:0 5px;border-radius:4px;border:1px dashed #6b7280;color:#c4b5fd;cursor:help;white-space:nowrap;line-height:15px}.sw.v{border-style:solid;border-color:#a78bfa;font-weight:700}
 #swpop{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:9;background:var(--card);border:1px solid #a78bfa;border-radius:10px;padding:10px 12px;font-size:13px;white-space:pre-line;box-shadow:0 6px 24px rgba(0,0,0,.5);max-height:50vh;overflow:auto}
 .age{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
+.qt{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;color:#0f1115;background:#f9a8d4;margin-left:2px}
+.rs.q{background:#f9a8d4;color:#0f1115}
 .mk{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}.mk:last-of-type{border-bottom:0}
 .rs{font-size:11px;font-weight:700;padding:1px 7px;border-radius:4px;background:var(--chip);color:var(--acc)}.rs.bad{background:var(--dn);color:#fff}.rs.good{background:var(--up);color:#0f1115}.rs.w{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:600}
 .ov{padding:6px 0;border-top:1px solid var(--line)}.ov:first-child{border-top:0}.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
@@ -377,7 +381,7 @@ try{var _t=localStorage.getItem('sm_tab');if(/^(home|hourly|short|layout|cross|w
 function lsg(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lss(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 /* 篩選與排序：預設值；使用者改過的存在瀏覽器，重新整理後保留（搜尋字不保留） */
-var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0},cross:{q:'',cat:'all',watch:0}};
+var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0,quiet:0},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,quiet:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0,quiet:0},cross:{q:'',cat:'all',watch:0}};
 var SD={hourly:{k:'t',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
 function merge(def,sv){var o={};Object.keys(def).forEach(function(k){var a=def[k],b=(sv||{})[k]||{},x={};Object.keys(a).forEach(function(j){x[j]=(j in b)?b[j]:a[j]});o[k]=x});return o}
 var F=merge(FD,lsg('sm_f',{})),S=merge(SD,lsg('sm_s',{}));
@@ -386,6 +390,8 @@ function saveF(){lss('sm_f',F)}function saveS(){lss('sm_s',S)}
 
 var VL={okx:'OKX',bitget:'Bitget',bybit:'Bybit'},TVX={okx:'OKX',bitget:'BITGET',bybit:'BYBIT'},CAT={crypto:'crypto',stock:'stock',comm:'commodity'};
 function CT(c){return c&&CAT[c]?'<span class="ct ct-'+c+'">'+CAT[c]+'</span>':''}
+/* 量增價平標籤 */
+function QT(x){return x&&x.quiet?'<span class="qt" title="爆量但價格還沒大動（門檻 ±'+x.qlim+'%）">量增價平</span>':''}
 var SIDE={long:'做多',short:'做空'},OUT={stop:'停損',t2:'達 T2',timeout:'逾時'};
 var PAT={breakout:'突破區間',breakdown:'跌破區間',squeeze:'壓縮打底',base:'區間整理',trend_up:'上升趨勢',trend_dn:'下降趨勢'};
 function $(id){return document.getElementById(id)}
@@ -463,7 +469,7 @@ function nearOf(c){var px=LP(c.ex,c.id),sd=F.short.side;if(px==null)return null;
   if(px>c.hi||px<c.lo)return 0;return Math.min((c.hi/px-1)*100,(1-c.lo/px)*100)}
 var COLS={
   hourly:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+(hW(a)?'<span class="tag">自選</span>':'')+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+(hW(a)?'<span class="tag">自選</span>':'')+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+'</div>'}},
     {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
     {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
@@ -485,7 +491,7 @@ var COLS={
     {k:'mfe',l:'最大有利',n:1,m:1,s:function(p){return p.mfeR||0},v:function(p){return '+'+(p.mfeR||0).toFixed(1)+'R'}},
     {k:'trigT',l:'觸發',s:function(p){return p.trigT},v:function(p){return tpe(p.trigT)}}]},
   pend:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(c){return c.base},v:function(c){return '<div class="c0w">'+WT(c.base)+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+'<span class="cat">'+(PAT[c.pattern]||'')+'</span>'+SWT(c.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(c){return c.base},v:function(c){return '<div class="c0w">'+WT(c.base)+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+QT(c)+'<span class="cat">'+(PAT[c.pattern]||'')+'</span>'+SWT(c.base)+'</div>'}},
     {k:'vx',l:'爆量',n:1,s:function(c){return c.vx},v:function(c){return '<b>'+c.vx+'x</b>'}},
     {k:'dayT',l:'爆量日',s:function(c){return c.dayT},v:function(c){return md(c.dayT)+' '+pc100(c.chgDay)}},
     {k:'close',l:'日收',n:1,m:1,v:function(c){return fp(c.close)}},
@@ -498,7 +504,7 @@ var COLS={
       if(sd==='long')return '<b>多 '+a.toFixed(1)+'%</b>';if(sd==='short')return '<b>空 '+b.toFixed(1)+'%</b>';
       return '<span class="'+(a<=b?'big':'cat')+'">多 '+a.toFixed(1)+'%</span>　<span class="'+(b<a?'big':'cat')+'">空 '+b.toFixed(1)+'%</span>'}}]},
   layout:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+WT(it.base)+lLink(it)+CT(it.cat)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+SWT(it.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+WT(it.base)+lLink(it)+CT(it.cat)+QT(it)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+SWT(it.base)+'</div>'}},
     {k:'day',l:'爆量日',s:function(it){return it.day},v:function(it){return it.day.slice(5)}},
     {k:'age',l:'天數',n:1,s:function(it){return it.age||0},v:function(it){return it.age||0}},
     {k:'entry',l:'爆量日收',n:1,v:function(it){return fp(it.entry)}},
@@ -560,7 +566,8 @@ function pass(f,o){
   if(f.ven&&f.ven!=='all'&&(o.vens||[]).indexOf(f.ven)<0)return false;
   if(f.watch&&!o.watch)return false;
   if(f.sw&&+f.sw>0&&o.sw!=null&&o.sw<+f.sw)return false;
-  if(f.single&&!o.single)return false;return true}
+  if(f.single&&!o.single)return false;
+  if(f.quiet&&!o.quiet)return false;return true}
 function sel(k,opts){var v=String(F[TAB][k]);return '<select data-f="'+k+'" class="'+(v!==String(FD[TAB][k])?'on':'')+'">'+opts.map(function(o){return '<option value="'+o[0]+'"'+(String(o[0])===v?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>'}
 function tg(k,l){return '<button class="tg'+(F[TAB][k]?' on':'')+'" data-t="'+k+'">'+l+'</button>'}
 function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='cross'?'crossA':TAB}
@@ -575,7 +582,7 @@ function fbar(){
   if('ven' in f)h+=sel('ven',VENS);
   if(TAB==='hourly')h+=sel('win',[['72','72 小時'],['24','24 小時'],['6','6 小時']])+sel('minx',[['0','倍數不限'],['5','≥ 5x'],['10','≥ 10x'],['20','≥ 20x'],['50','≥ 50x']]);
   if('sw' in f)h+=sel('sw',[['0','掃單不限'],['1','72h 有掃單'],['2','72h 有量掃單']]);
-  h+=tg('watch','只看自選');if('single' in f)h+=tg('single','只有一家爆量');
+  h+=tg('watch','只看自選');if('single' in f)h+=tg('single','只有一家爆量');if('quiet' in f)h+=tg('quiet','只看量增價平');
   var t=sortTarget(),cs=COLS[t]().filter(function(c){return c.s});
   h+='<span class="so"><select id="sk">'+cs.map(function(c){return '<option value="'+c.k+'"'+(S[t].k===c.k?' selected':'')+'>排序：'+c.l+'</option>'}).join('')+'</select><button class="tg" id="sd">'+(S[t].d>0?'↑ 小到大':'↓ 大到小')+'</button></span>';
   return h+'<span class="cnt" id="cnt"></span><button class="lnk" id="clr">清除篩選</button></div>'}
@@ -599,6 +606,15 @@ function kvs(o){return o.map(function(x){return '<div><span>'+x[0]+'</span>'+x[1
 function todo(){
   var now=Date.now(),out=[];
   var sh=D.short,lay=D.layout,cr=D.cross,hr=D.hourly;
+  /* 量增價平：盤中 6 小時內（同一檔取倍數最高）、每日爆量取最新一天 */
+  if(hr){var qb={};hr.recent.forEach(function(a){if(a.quiet&&a.t>=now-6*3600e3&&(!qb[a.base]||a.x1>qb[a.base].x1))qb[a.base]=a});
+    Object.keys(qb).map(function(k){return qb[k]}).sort(function(a,b){return b.t-a.t||b.x1-a.x1}).forEach(function(a){var px=LP(a.venue,a.sym);
+      out.push({k:-1,h:item('量增價平','q',a.base,tv(a.venue,a.sym,'60'),kvs([['來源','盤中爆量 '+a.x1+'x'],['時間',tpe(a.t)],['1H',pc100(a.chg)+'（門檻 ±'+a.qlim+'%）'],['爆量收',fp(a.price)],['現價',FP(a.venue,px)],['之後',px&&a.price?pc(px/a.price-1):'—']]),CT(a.cat))})})}
+  if(sh&&sh.pending.length){var ld=Math.max.apply(null,sh.pending.map(function(c){return c.dayT}));
+    sh.pending.filter(function(c){return c.quiet&&c.dayT===ld}).forEach(function(c){var px=LP(c.ex,c.id);
+      out.push({k:-1,h:item('量增價平','q',c.base,tv(c.ex,c.id,'240'),kvs([['來源','每日爆量（短線）'+c.vx+'x'],['爆量日',md(c.dayT)],['當日',pc100(c.chgDay)+'（門檻 ±'+c.qlim+'%）'],['收',fp(c.close)],['現價',FP(c.ex,px)]]),CT(c.cat))})})}
+  if(lay&&lay.lastDay)lay.active.filter(function(it){return it.quiet&&it.day===lay.lastDay}).forEach(function(it){var px=lpLayout(it);
+    out.push({k:-1,h:item('量增價平','q',it.base,layoutUrl(it),kvs([['來源','每日爆量（布局）'],['當日',pc100(it.chgDay)+'（門檻 ±'+it.qlim+'%）'],['爆量日收',fp(it.entry)],['現價',FP(lvLayout(it),px)]]),CT(it.cat))})});
   if(sh){
     sh.open.forEach(function(p){
       var px=LP(p.ex,p.id),r=rNow(p,px),why=null,cls='w';
@@ -666,6 +682,15 @@ function liveBad(){var ok=(D.live&&D.live.ok)||{};return ok.okx===false||snapBad
 function sysBad(){
   var bad=Object.keys(MODEXP).some(function(t){var u=D.updated&&D.updated[t]?Date.parse(D.updated[t]):0;return (u&&Date.now()-u>MODEXP[t]*3600e3)||((D.warnings&&D.warnings[t])||[]).length});
   return bad||(D.runs&&D.runs.last&&!D.runs.last.ok)||liveBad()}
+function quietCard(){
+  var q=D.quiet;if(!q)return '<div class="card empty">還沒有資料（第一筆量增價平出現後開始記錄）</div>';
+  var all=q.done.concat(q.items),src=[['all','全部'],['hourly','盤中'],['short','每日（短線）'],['layout','每日（布局）']];
+  function st(rows,h){var v=rows.map(function(x){return x.r&&x.r[h]}).filter(function(x){return typeof x==='number'});
+    if(!v.length)return '—';var avg=v.reduce(function(a,b){return a+b},0)/v.length,up=v.filter(function(x){return x>0}).length/v.length;
+    return pc100(avg)+' <small>上漲 '+(up*100).toFixed(0)+'%・'+v.length+' 筆</small>'}
+  return '<div class="card"><div class="sub" style="margin-bottom:6px">每筆記錄之後 24h、72h 的漲跌。追蹤中 '+q.items.length+' 筆、已結算 '+q.done.length+' 筆</div>'+
+    src.map(function(x){var rows=all.filter(function(r){return x[0]==='all'||r.src===x[0]});
+      return '<div class="st"><b>'+x[1]+'</b><span class="cat">24h '+st(rows,24)+'　72h '+st(rows,72)+'</span></div>'}).join('')+'</div>'}
 function home(){
   CNT=null;
   var t=todo(),o=overlap();
@@ -673,14 +698,14 @@ function home(){
   var ov=o.length?'<div class="card">'+o.map(function(x){
     return '<div class="ov"><div class="l1">'+WT(x.b)+'<span class="sym">'+esc(x.b)+'</span><span class="cat">'+x.n+' 個模組</span></div><div class="chips">'+
       MODS.filter(function(k){return x.m[k[0]]}).map(function(k){return '<span class="badge">'+k[1]+' '+esc(x.m[k[0]])+'</span>'}).join('')+'</div></div>'}).join('')+'</div>':'<div class="card empty">無</div>';
-  var right=panel('大盤',marketCard(),'fix')+panel('多模組重疊 <small>'+o.length+' 檔同時出現在 2 個以上模組</small>',ov,'grow')+panel('系統狀態',status(),'fix');
+  var right=panel('大盤',marketCard(),'fix')+panel('量增價平成績',quietCard(),'fix')+panel('多模組重疊 <small>'+o.length+' 檔同時出現在 2 個以上模組</small>',ov,'grow')+panel('系統狀態',status(),'fix');
   return (sysBad()?'<div class="card alert" style="flex:none">系統有異常（更新延遲、執行失敗或資料警告），詳見「系統狀態」</div>':'')+'<div class="home"><div class="vs">'+left+'</div><div class="vs">'+right+'</div></div>'}
 
 /* ---------- 盤中爆量 ---------- */
 function hourly(){
   var h=D.hourly;if(!h){CNT=null;return '<div class="empty">還沒有盤中爆量資料</div>'}
   var f=F.hourly,ref=(h.lastHour||Date.now())+3600e3,w=(+f.win)*3600e3,mx=+f.minx;
-  var list=h.recent.filter(function(a){return a.t>=ref-w&&a.x1>=mx&&pass(f,{base:a.base,cat:a.cat,vens:[a.venue],watch:hW(a),single:a.single})});
+  var list=h.recent.filter(function(a){return a.t>=ref-w&&a.x1>=mx&&pass(f,{base:a.base,cat:a.cat,vens:[a.venue],watch:hW(a),single:a.single,quiet:a.quiet})});
   CNT=[list.length,h.recent.length];
   return '<div class="vs"><div class="meta">最近檢查：'+tpe(h.lastHour)+' 那根 1H K，保留 72 小時內紀錄。滑鼠停在交易所欄可看其他家倍數。</div>'+panel('',table('hourly',list,COLS.hourly()),'grow')+'</div>'}
 
@@ -689,7 +714,7 @@ function stat(cl,val,fmt){if(!cl.length)return '<small>0 筆</small>';var w=cl.f
   return '<small>'+cl.length+' 筆　勝率 '+(w/cl.length*100).toFixed(0)+'%　平均 '+fmt(sum/cl.length)+'</small>'}
 function short(){
   var x=D.short;if(!x){CNT=null;return '<div class="empty">還沒有短線清單資料</div>'}
-  var f=F.short,sd=f.side,P=function(c){return pass(f,{base:c.base,cat:c.cat,vens:[c.ex],watch:inWatch(c.base),sw:c.status==='closed'||c.exitT?null:swLvl(c.base)})};
+  var f=F.short,sd=f.side,P=function(c){return pass(f,{base:c.base,cat:c.cat,vens:[c.ex],watch:inWatch(c.base),quiet:c.quiet,sw:c.status==='closed'||c.exitT?null:swLvl(c.base)})};
   var S1=function(p){return sd==='all'||p.side===sd};
   var s='<div class="vs"><div class="meta">最近每日掃描：'+esc(x.lastDaily||'—')+(sd!=='all'&&f.pane==='pend'?'。等待觸發每檔都有多空兩個觸發價；選「只看'+SIDE[sd]+'」時排除已越過另一邊的，距觸發只算'+SIDE[sd]+'那邊':'')+'。'+swMeta()+'</div>';
   if(f.pane==='pend'){
@@ -707,7 +732,7 @@ function short(){
 /* ---------- 布局 ---------- */
 function layout(){
   var x=D.layout;if(!x){CNT=null;return '<div class="empty">還沒有布局清單資料</div>'}
-  var f=F.layout,list=x.active.filter(function(it){return pass(f,{base:it.base,cat:it.cat,vens:it.spiked||[],watch:inWatch(it.base),single:it.single,sw:swLvl(it.base)})});
+  var f=F.layout,list=x.active.filter(function(it){return pass(f,{base:it.base,cat:it.cat,vens:it.spiked||[],watch:inWatch(it.base),single:it.single,quiet:it.quiet,sw:swLvl(it.base)})});
   CNT=[list.length,x.active.length];
   return '<div class="vs"><div class="meta">資料日 '+esc(x.lastDay||'—')+'（UTC 日線）。交易所篩選看「爆量的那家」。'+swMeta()+'</div>'+panel('',table('layout',list,COLS.layout()),'grow')+'</div>'}
 

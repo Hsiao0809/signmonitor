@@ -82,6 +82,7 @@ jobs:
             await ensure("金叉清單", "cross-body.md", "cross_");
             await ensure("行情快照", "snapshot-body.md", "snapshot_");
             await ensure("掃流動性", "sweep-body.md", "sweep_");
+            await ensure("量增價平", "quiet-body.md", "quiet_");
 
       - name: Restore Bybit daily cache
         uses: actions/cache/restore@v4
@@ -97,11 +98,12 @@ jobs:
           LAYOUT_URL: ${{ steps.issue.outputs.layout_url }}
           HOURLY_URL: ${{ steps.issue.outputs.hourly_url }}
           CROSS_URL: ${{ steps.issue.outputs.cross_url }}
+          QUIET_URL: ${{ steps.issue.outputs.quiet_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md
           --bybit-cache .cache/bybit-daily.json --out out
-          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL"
+          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL"
 
       - name: Save Bybit daily cache
         if: ${{ always() && hashFiles('.cache/bybit-daily.json') != '' }}
@@ -119,6 +121,7 @@ jobs:
           CROSS_NUMBER: ${{ steps.issue.outputs.cross_number }}
           SNAPSHOT_NUMBER: ${{ steps.issue.outputs.snapshot_number }}
           SWEEP_NUMBER: ${{ steps.issue.outputs.sweep_number }}
+          QUIET_NUMBER: ${{ steps.issue.outputs.quiet_number }}
         with:
           script: |
             const fs = require("fs");
@@ -138,6 +141,7 @@ jobs:
             await put("CROSS_NUMBER", "out/cross-body.md", "out/cross-comment.md");
             await put("SNAPSHOT_NUMBER", "out/snapshot-body.md", "out/none.md");
             await put("SWEEP_NUMBER", "out/sweep-body.md", "out/none.md");
+            await put("QUIET_NUMBER", "out/quiet-body.md", "out/quiet-comment.md");
 
       - name: Send Telegram
         env:

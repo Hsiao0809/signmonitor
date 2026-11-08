@@ -5,6 +5,7 @@
    特別標出「只有一家爆量」。之後每天更新現價、報酬、相對大盤與最大回撤，
    滿 holdDays 天結算。不用 4H 觸發、不設緊停損，和短線清單是兩套邏輯。
    ============================================================ */
+import { quietDay, atrPctAt } from './quiet.mjs';
 import zlib from 'node:zlib';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 
@@ -52,12 +53,16 @@ export function layoutCandidate(meta, series, day, nowMs, cfg = LAYOUT) {
   if (!spiked.length) return null;
   const others = cfg.venues.filter(v => !spiked.includes(v) && per[v]);
   const single = spiked.length === 1 && others.length >= 1 && others.every(v => per[v].x < cfg.otherQuietX);
-  const refBar = per[meta.ref]?.bar || per[spiked[0]].bar;
+  const refV = per[meta.ref] ? meta.ref : spiked[0];
+  const refBar = per[refV].bar;
+  const rb = series[refV] || [];
+  const q = quietDay((refBar.c / refBar.o - 1) * 100, atrPctAt(rb, rb.indexOf(refBar)));
   return {
     base: meta.base, cat: meta.cat, ref: per[meta.ref] ? meta.ref : spiked[0], syms: meta.syms || {},
     day, dayT: refBar.t, entry: refBar.c, hi: refBar.h, lo: refBar.l, chgDay: +((refBar.c / refBar.o - 1) * 100).toFixed(2),
     venues: Object.fromEntries(cfg.venues.map(v => [v, per[v] ? { x: +per[v].x.toFixed(2), qv: Math.round(per[v].qv) } : null])),
     spiked, single, addedAt: nowMs, status: 'active',
+    quiet: q.quiet, qlim: q.lim, atrp: q.atr,       /* 量增價平 */
     last: refBar.c, lastT: refBar.t, low: refBar.c, high: refBar.c, ret: 0, mae: 0, mfe: 0, ex: 0, age: 0,
     respikes: 0, notified: []
   };
@@ -190,7 +195,7 @@ export function layoutDailyText(added, events, state, cfg = LAYOUT) {
     const top = added.slice().sort((a, b) => (b.single - a.single) || (Math.max(...b.spiked.map(v => b.venues[v].x)) - Math.max(...a.spiked.map(v => a.venues[v].x)))).slice(0, 12);
     L.push(`布局清單新進 ${added.length} 檔（任一家量 ≥${cfg.minX}x，列前 ${top.length}；★＝爆量的交易所）`);
     top.forEach(c => {
-      L.push(`${tvLink(c)}［${CAT[c.cat] || c.cat}］${kindOf(c)}｜收 ${fmtP(c.entry)}（${c.chgDay >= 0 ? '+' : ''}${c.chgDay.toFixed(1)}%）`);
+      L.push(`${c.quiet ? '【量增價平】' : ''}${tvLink(c)}［${CAT[c.cat] || c.cat}］${kindOf(c)}｜收 ${fmtP(c.entry)}（${c.chgDay >= 0 ? '+' : ''}${c.chgDay.toFixed(1)}%）`);
       L.push(`  ${venueLine(c, cfg)}`);
     });
     L.push(`布局單以能承受 -${cfg.sizePct}% 回撤計算部位，追蹤 ${cfg.holdDays} 天`);

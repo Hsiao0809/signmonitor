@@ -88,6 +88,17 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 沒有做回測。參數在 `src/hourly.mjs` 的 `HOURLY`。
 
+## 量增價平
+
+已判定爆量、但價格還沒大幅波動的標的，另發一則【量增價平】通知（排在最前面），原本的爆量通知照發並加上【量增價平】標記。
+
+| 來源 | 「價格沒大動」條件 |
+|---|---|
+| 盤中爆量（1H） | \|該小時漲跌\| ≤ 近 7 天平均 1H 振幅 × 0.5，且 ≤ 2%（Bybit 沒有歷史振幅：加密 1%、股票／商品 0.5%） |
+| 每日爆量（短線、布局） | \|爆量日漲跌\| ≤ 14 日 ATR% × 0.5，且 ≤ 3% |
+
+每筆記錄之後 24h、72h 的漲跌（每輪抓價，最多晚 1 小時；Bybit 標的用同名 OKX／Bitget 合約價格），成績存在 Issue「量增價平」，網頁總覽另有「量增價平成績」。量增價平只代表有量、價格還沒反應，可能吸籌也可能出貨，方向未定。參數在 `src/quiet.mjs` 的 `QUIET`。
+
 ## 4H 金叉規則
 
 | 項目 | 設定 |
@@ -156,6 +167,7 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 | `src/layout.mjs`、`src/layout-scan.mjs` | 布局清單 |
 | `src/hourly.mjs`、`src/hourly-scan.mjs` | 盤中爆量 |
 | `src/cross.mjs`、`src/cross-scan.mjs` | 4H 金叉（Binance 現貨） |
+| `src/quiet.mjs` | 量增價平（標記、通知、24h／72h 成績） |
 | `src/snapshot.mjs` | 行情快照（給網頁：BTC／ETH 4H 狀態、Binance／Bitget 價格） |
 | `src/venues.mjs` | OKX、Bitget、Bybit 日線／1H 轉接器、Bybit WebSocket |
 | `src/run.mjs` | 每輪執行入口 |

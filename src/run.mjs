@@ -22,6 +22,8 @@ import { parseWatch } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
 import * as SN from './snapshot.mjs';
+import * as Q from './quiet.mjs';
+import { getJSON } from './venues.mjs';
 import * as SW from './sweep.mjs';
 import * as SWS from './sweep-scan.mjs';
 
@@ -271,6 +273,31 @@ async function main() {
   }
   HS.saveCache(cachePath, cache);
 
+  /* ---------- 量增價平：新紀錄＋到期的 24h／72h 漲跌；失敗只影響這一塊 ---------- */
+  let qadded = [];
+  const qBody = a['quiet-body'] && fs.existsSync(a['quiet-body']) ? fs.readFileSync(a['quiet-body'], 'utf8') : '';
+  const qstate = a.quiet === 'skip' ? null : Q.extractQuiet(qBody);
+  if (a.quiet !== 'skip' && !qstate) console.log('quiet warning: 量增價平 Issue 的狀態無法解析；為避免覆蓋，本輪略過');
+  if (qstate) {
+    try {
+      qadded = Q.addItems(qstate, [...Q.fromHourly(halerts), ...Q.fromShort(daily?.added || []), ...Q.fromLayout(layout?.added || [])]);
+      const before = JSON.stringify(qstate.items.map(x => x.r));
+      const due = qstate.items.some(it => Q.QUIET.checks.some(h => it.r[h] === undefined && nowMs >= it.t + h * HOUR));
+      if (due) {
+        const [ok, bg] = await Promise.all([getJSON('https://www.okx.com/api/v5/market/tickers?instType=SWAP'), getJSON('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES')]);
+        const okx = new Map((ok?.data || []).map(t => [t.instId, +t.last])), bgt = new Map((bg?.data || []).map(t => [t.symbol, +t.lastPr]));
+        /* Bybit 從 GitHub 連不到：改用同名的 OKX／Bitget 合約價格 */
+        const priceOf = it => (it.venue === 'okx' && okx.get(it.id)) || (it.venue === 'bitget' && bgt.get(it.id))
+          || okx.get(`${it.base}-USDT-SWAP`) || bgt.get(`${it.base}USDT`) || null;
+        Q.updateItems(qstate, priceOf, nowMs);
+      }
+      if (qadded.length || due || JSON.stringify(qstate.items.map(x => x.r)) !== before || !qBody.includes('QUIET_STATE')) {
+        fs.writeFileSync(path.join(outDir, 'quiet-body.md'), Q.embedQuiet(T.render(Q.quietMarkdown(qstate, { nowMs }), 'md'), qstate));
+      }
+      if (qadded.length) fs.writeFileSync(path.join(outDir, 'quiet-comment.md'), T.render(Q.quietAlertText(qadded, nowMs), 'md').replace(/\n/g, '  \n'));
+    } catch (e) { console.log('quiet warning:', e.message); }
+  }
+
   /* ---------- 行情快照（給網頁）：BTC／ETH 4H 狀態＋網頁抓不到的 Binance、Bitget 價格；失敗不影響其他 ---------- */
   let snap = null;
   if (a['snapshot'] !== 'skip') {
@@ -282,6 +309,8 @@ async function main() {
   }
 
   const msgs = [];
+  /* 量增價平另發一則，排在最前面 */
+  if (qadded.length) msgs.push(Q.quietAlertText(qadded, nowMs, a['quiet-url'] || ''));
   const hmsg = HR.hourlyAlertText(halerts, targetHour, [], a['hourly-url'] || '');
   if (hmsg) msgs.push(hmsg);
   if (cross?.newA?.length) msgs.push(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || ''));
@@ -310,6 +339,7 @@ async function main() {
     `pending=${state.pending.length} open=${state.open.length} closed=${state.closed.length}`,
     `layout=${layout ? `ok active=${lstate.active.length} added=${layout.added.length}` : (doLayout ? 'deferred' : 'skip')}`,
     `events=${events.length} warnings=${warnings.length}`,
+    `quiet=${qstate ? `added=${qadded.length} tracking=${qstate.items.length} done=${qstate.done.length}` : 'skip'}`,
     `snapshot=${snap ? `market=${snap.market.length} bitget=${Object.keys(snap.px.bitget).length} binance=${Object.keys(snap.px.binance).length}` : 'skip'}`,
     `sweep=${sweep ? `targets=${sweep.n} events=${sweep.events} added=${sweep.added}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
