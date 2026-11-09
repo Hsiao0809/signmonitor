@@ -465,7 +465,7 @@ function ago(ms){var m=Math.round((Date.now()-ms)/6e4);return m<60?m+' 分鐘前
 var H8=8*3600e3;
 
 /* ---------- 共用表格：點欄位標題排序 ---------- */
-function th(id,c){var st=S[id],on=st&&st.k===c.k&&c.s;return '<th class="'+(c.n?'n ':'')+(c.s?'s':'')+(on?' on':'')+'"'+(c.s?' data-tb="'+id+'" data-sk="'+c.k+'" title="點一下排序"':'')+'>'+c.l+(on?(st.d>0?' ▴':' ▾'):'')+'</th>'}
+function th(id,c){var st=S[id],on=st&&st.k===c.k&&c.s;return '<th class="'+(c.n?'n ':'')+(c.s?'s':'')+(on?' on':'')+'"'+(c.s?' data-tb="'+id+'" data-sk="'+c.k+'"':'')+((c.h||c.s)?' title="'+esc((c.h?c.h+(c.s?'。':''):'')+(c.s?'點一下排序':''))+'"':'')+'>'+c.l+(on?(st.d>0?' ▴':' ▾'):'')+'</th>'}
 function sortRows(id,rows,cols){var st=S[id];if(!st)return rows;var c=cols.filter(function(x){return x.k===st.k&&x.s})[0];if(!c)return rows;
   return rows.map(function(r,i){return {r:r,v:c.s(r),i:i}}).sort(function(a,b){if(a.v==null&&b.v==null)return a.i-b.i;if(a.v==null)return 1;if(b.v==null)return -1;var x=a.v<b.v?-1:a.v>b.v?1:0;return x?x*st.d:a.i-b.i}).map(function(o){return o.r})}
 /* sub：每列下方可加一整行附註（例如短線持倉的警示），不擠在代號欄裡 */
@@ -512,8 +512,8 @@ var COLS={
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
     {k:'chg',l:'1H',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
     {k:'qv',l:'成交額',n:1,s:function(a){return a.qv},v:function(a){return money(a.qv)}},
-    {k:'prePx',l:'預警價',n:1,s:function(a){var p=prePxOf(a);return p?p.price:null},v:function(a){var p=prePxOf(a);return p?fp(p.price):''},tt:function(a){var p=prePxOf(a);return p?'預警 '+tpe(p.t)+'，到爆量收 '+((a.price/p.price-1)*100).toFixed(1)+'%':''}},
-    {k:'price',l:'爆量收',n:1,m:1,v:function(a){return fp(a.price)}},
+    {k:'prePx',l:'預警價',h:'12 小時內最早一次預警時的訊號價',n:1,s:function(a){var p=prePxOf(a);return p?p.price:null},v:function(a){var p=prePxOf(a);return p?fp(p.price):''},tt:function(a){var p=prePxOf(a);return p?'預警 '+tpe(p.t)+'，到訊號價 '+((a.price/p.price-1)*100).toFixed(1)+'%':''}},
+    {k:'price',l:'訊號價',h:'爆量那根 1H K 的收盤價（整點收盤後約 1～2 分鐘通知）',n:1,v:function(a){return fp(a.price)}},
     {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
     {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
     {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'},
@@ -532,7 +532,7 @@ var COLS={
     {k:'base',l:'代號',dd:1,s:function(c){return c.base},v:function(c){return '<div class="c0w">'+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+QT(c)+'<span class="cat">'+(PAT[c.pattern]||'')+'</span>'+SWT(c.base)+WT(c.base)+'</div>'}},
     {k:'vx',l:'爆量',n:1,s:function(c){return c.vx},v:function(c){return '<b>'+c.vx+'x</b>'}},
     {k:'dayT',l:'爆量日',s:function(c){return c.dayT},v:function(c){return md(c.dayT)+' '+pc100(c.chgDay)}},
-    {k:'close',l:'日收',n:1,m:1,v:function(c){return fp(c.close)}},
+    {k:'close',l:'訊號價',h:'爆量日那根日 K 的收盤價（UTC 日線）',n:1,v:function(c){return fp(c.close)}},
     {k:'hi',l:'做多 4H收＞',ml:'做多＞',n:1,v:function(c){return fp(c.hi)}},
     {k:'lo',l:'做空 4H收＜',ml:'做空＜',n:1,v:function(c){return fp(c.lo)}},
     {k:'px',l:'現價',n:1,v:function(c){return FP(c.ex,LP(c.ex,c.id))}},
@@ -545,7 +545,7 @@ var COLS={
     {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+lLink(it)+CT(it.cat)+QT(it)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+SWT(it.base)+WT(it.base)+'</div>'}},
     {k:'day',l:'爆量日',s:function(it){return it.day},v:function(it){return it.day.slice(5)}},
     {k:'age',l:'天數',n:1,s:function(it){return it.age||0},v:function(it){return it.age||0}},
-    {k:'entry',l:'爆量日收',n:1,v:function(it){return fp(it.entry)}},
+    {k:'entry',l:'訊號價',h:'爆量日那根日 K 的收盤價（UTC 日線）',n:1,v:function(it){return fp(it.entry)}},
     {k:'px',l:'現價',n:1,v:function(it){var px=lpLayout(it);return px?FP(lvLayout(it),px):'—'}},
     {k:'ret',l:'報酬',n:1,s:lRet,v:function(it){var px=lpLayout(it);return '<b>'+pc(lRet(it))+'</b>'+(px?'':'<span class="age">日收</span>')}},
     {k:'ex',l:'相對大盤',n:1,s:function(it){return it.ex},v:function(it){return pc(it.ex)}},
@@ -555,7 +555,7 @@ var COLS={
   crossA:function(){return [
     {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+link(it.base,bn(it.sym))+stk(it)+(it.deadT?'<span class="badge" style="color:var(--dn)">已死叉 '+pc100(it.deadRet)+'</span>':'<span class="badge" style="color:var(--up)">仍成立</span>')+WT(normBase(it.base,it.stock))+'</div>'}},
     {k:'t',l:'金叉',s:function(it){return it.t},v:function(it){return tpe(it.t)}},
-    {k:'close',l:'金叉收',n:1,v:function(it){return fp(it.close)}},
+    {k:'close',l:'訊號價',h:'金叉那根 4H K 的收盤價',n:1,v:function(it){return fp(it.close)}},
     {k:'px',l:'現價',n:1,v:function(it){return FP('binance',LP('binance',it.sym))}},
     {k:'ret',l:'報酬',n:1,s:function(it){var px=LP('binance',it.sym);return px?(px/it.close-1)*100:it.ret},v:function(it){var px=LP('binance',it.sym);return '<b>'+(px?pc(px/it.close-1):pc100(it.ret))+'</b>'}},
     {k:'mfe',l:'最大漲',n:1,s:function(it){return it.mfe},v:function(it){return pc100(it.mfe)}},
@@ -567,7 +567,7 @@ var COLS={
   crossB:function(){return [
     {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+link(it.base,bn(it.sym))+stk(it)+WT(normBase(it.base,it.stock))+'</div>'}},
     {k:'t',l:'金叉',s:function(it){return it.t},v:function(it){return tpe(it.t)}},
-    {k:'close',l:'收',n:1,v:function(it){return fp(it.close)}},
+    {k:'close',l:'訊號價',h:'金叉那根 4H K 的收盤價',n:1,v:function(it){return fp(it.close)}},
     {k:'volx',l:'量',n:1,s:function(it){return it.volx},v:function(it){return it.volx==null?'—':it.volx+'x'}},
     {k:'px200',l:'距SMA200',n:1,s:function(it){return it.px200},v:function(it){return pc100(it.px200)}},
     {k:'why',l:'未達 A 級原因',w:1,v:function(it){return esc((it.reasons||[]).join('、'))}}]},
@@ -595,7 +595,7 @@ COLS.early=function(){return [
   {k:'qvNow',l:'已成交',n:1,s:function(a){return a.qvNow},v:function(a){return money(a.qvNow||0)}},
   {k:'chg',l:'當時',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
   {k:'chg24',l:'前24h／ATR',n:1,s:function(a){return a.chg24!=null&&a.atrp?a.chg24/a.atrp:null},v:function(a){return a.chg24==null?'—':pc100(a.chg24)+' <span class="cat">'+a.atrp+'%</span>'}},
-  {k:'price',l:'推算時價',n:1,v:function(a){return a.price?fp(a.price):'—'}},
+  {k:'price',l:'訊號價',h:'第 15／30／45 分推算當下的價格',n:1,v:function(a){return a.price?fp(a.price):'—'}},
   {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
   {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
   {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'}}]};
@@ -612,7 +612,7 @@ COLS.pre=function(){return [
   {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return a.x1+'x'}},
   {k:'qv',l:'成交額',n:1,s:function(a){return a.qv},v:function(a){return money(a.qv)}},
   {k:'chg',l:'1H',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
-  {k:'price',l:'預警價',n:1,v:function(a){return a.price?fp(a.price):'—'}},
+  {k:'price',l:'訊號價',h:'預警那根 1H K 的收盤價（整點收盤後約 1～2 分鐘通知）',n:1,v:function(a){return a.price?fp(a.price):'—'}},
   {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
   {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
   {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+VL[a.venue]+'</span>'}}]};
@@ -622,7 +622,7 @@ COLS.ws=function(){return [
   {k:'side',l:'標記',w:1,v:function(e){return '<span class="sw'+(swV(e)?' v':'')+'" title="'+esc(swDetail(e))+'">'+esc(swLabel(e))+'</span>'}},
   {k:'lv',l:'價位',n:1,v:function(e){return e.lv.map(function(x){return fp(x.p)}).join('／')}},
   {k:'x',l:'極值',n:1,m:1,v:function(e){return fp(e.x)}},
-  {k:'c',l:'收盤',n:1,v:function(e){return fp(e.c)}},
+  {k:'c',l:'訊號價',h:'出現掃流動性那根 4H K 的收盤價',n:1,v:function(e){return fp(e.c)}},
   {k:'volx',l:'量',n:1,s:function(e){return e.volx},v:function(e){return e.volx==null?'—':e.volx+'x'}}]};
 function swMeta(){var w=D.sweep;return w?'掃流動性標記：最近 72 小時'+(w.lastBar?'（最近檢查 '+tpe(w.lastBar)+' 那根 4H K）':'')+'，虛線＝無量、實線＝有量，滑鼠停上去（手機點一下）看細節；沒有回測，僅供參考。':'掃流動性標記：下一根 4H K 收盤後開始。'}
 
@@ -693,7 +693,7 @@ function todoGroups(){
     {k:'x',l:'倍數',n:1,s:function(o){return o.x},v:function(o){return o.x==null?'—':'<b>'+o.x+'x</b>'}},
     {k:'t',l:'時間',s:function(o){return o.t},v:function(o){return o.tl}},
     {k:'chg',l:'當時漲跌',n:1,v:function(o){return pc100(o.chg)+' <span class="cat">門檻 ±'+o.qlim+'%</span>'}},
-    {k:'ref',l:'爆量收',n:1,v:function(o){return fp(o.ref)}},
+    {k:'ref',l:'訊號價',h:'爆量那根 K 的收盤價',n:1,v:function(o){return fp(o.ref)}},
     {k:'px',l:'現價',n:1,v:function(o){return o.px?FP(o.ven,o.px):'—'}},
     {k:'aft',l:'之後',n:1,s:aft,v:function(o){return pc(aft(o))}}]});
   /* 短線持倉：接近停損／T1／T2、8 小時內新觸發 */
@@ -711,6 +711,7 @@ function todoGroups(){
       xs.push({base:c.base,url:tv(c.ex,c.id,'240'),ct:CT(c.cat),tags:sideB(side),w:inWatch(c.base),c:c,px:px,tg:tg,over:Math.abs(px/tg-1)})})}
   G.push({id:'to',title:'短線持倉',rows:op,cols:[TC0,
     {k:'why',l:'原因',dd:1,s:function(o){return WHY[o.why]},v:function(o){return '<span class="rs '+o.cls+'">'+o.why+'</span>'}},
+    {k:'entry',l:'進場',h:'觸發那根 4H K 的收盤價',n:1,v:function(o){return fp(o.p.entry)}},
     {k:'px',l:'現價',n:1,v:function(o){return pxCell(o.p,o.px)}},
     {k:'r',l:'目前',n:1,s:function(o){return o.r},v:function(o){return '<b>'+rr(o.r)+'</b>'}},
     {k:'toStop',l:'距停損',n:1,dd:1,s:function(o){return toStop(o.p,o.px)},v:function(o){var d=toStop(o.p,o.px);return d==null?'—':'<span class="'+(d<2?'dn big':'')+'">'+d.toFixed(1)+'%</span>'}},
@@ -730,7 +731,7 @@ function todoGroups(){
   G.push({id:'tc',title:'金叉',rows:cx,cols:[TC0,
     {k:'st',l:'狀態',v:function(o){return o.dead?'<span class="rs bad">已死叉</span>':'<span class="rs good">新 A 級</span>'}},
     {k:'t',l:'金叉',s:function(o){return o.it.t},v:function(o){return tpe(o.it.t)}},
-    {k:'close',l:'金叉收',n:1,v:function(o){return fp(o.it.close)}},
+    {k:'close',l:'訊號價',h:'金叉那根 4H K 的收盤價',n:1,v:function(o){return fp(o.it.close)}},
     {k:'px',l:'現價',n:1,v:function(o){return FP('binance',o.px)}},
     {k:'ret',l:'報酬',n:1,s:function(o){return o.ret},v:function(o){return pc100(o.ret)+(o.dead?' <span class="cat">死叉出場</span>':'')}},
     {k:'volx',l:'量',n:1,s:function(o){return o.it.volx},v:function(o){return o.it.volx+'x'}},
@@ -745,7 +746,7 @@ function todoGroups(){
   G.push({id:'th',title:'盤中爆量',note:'5 小時內倍數前 5 名＋自選（含盤中推算）',rows:hx,cols:[TC0,
     {k:'x',l:'倍數',n:1,s:function(o){return o.a.x1},v:function(o){return '<b>'+o.a.x1+'x</b>'+(o.a.proj?' <span class="cat">推算:'+o.a.min+'</span>':'')+(o.a.rampOnly?' <span class="cat">連續放量</span>':'')}},
     {k:'t',l:'時間',s:function(o){return o.a.t},v:function(o){return tpe(o.a.t)}},
-    {k:'ref',l:'爆量收',n:1,v:function(o){return fp(o.ref)}},
+    {k:'ref',l:'訊號價',h:'爆量那根 K 的收盤價',n:1,v:function(o){return fp(o.ref)}},
     {k:'px',l:'現價',n:1,v:function(o){return FP(o.a.venue,o.px)}},
     {k:'aft',l:'之後',n:1,s:aft,v:function(o){return pc(aft(o))}},
     {k:'ven',l:'交易所',v:function(o){return '<span class="badge">'+kindH(o.a)+'</span>'}}]});
@@ -755,7 +756,7 @@ function todoGroups(){
     lx.push({base:it.base,url:layoutUrl(it),ct:CT(it.cat),tags:'',w:inWatch(it.base),it:it,ref:it.entry,px:lpLayout(it)})});
   G.push({id:'tl',title:'新進布局',note:lay&&lay.lastDay?'資料日 '+lay.lastDay:'',rows:lx,cols:[TC0,
     {k:'ven',l:'交易所',v:function(o){return '<span class="badge">'+kindL(o.it)+'</span>'}},
-    {k:'ref',l:'爆量日收',n:1,v:function(o){return fp(o.ref)}},
+    {k:'ref',l:'訊號價',h:'爆量日那根日 K 的收盤價',n:1,v:function(o){return fp(o.ref)}},
     {k:'px',l:'現價',n:1,v:function(o){return o.px?FP(lvLayout(o.it),o.px):'—'}},
     {k:'aft',l:'報酬',n:1,s:aft,v:function(o){return pc(aft(o))}}]});
   G.forEach(function(g){TCOLS[g.id]=g.cols});
@@ -766,12 +767,12 @@ function todoTables(){var G=todoGroups();if(!G.length)return '<div class="empty"
 var MODS=[['hourly','盤中爆量'],['pend','短線等待'],['open','短線持倉'],['layout','布局'],['crossA','金叉 A'],['crossB','金叉 B']];
 function overlap(){
   var m={};function add(b,k,txt){if(!b)return;m[b]=m[b]||{};if(!m[b][k])m[b][k]=txt}
-  if(D.hourly)D.hourly.recent.forEach(function(a){add(normBase(a.base),'hourly',a.x1+'x '+tpe(a.t))});
-  if(D.short){D.short.pending.forEach(function(c){add(normBase(c.base),'pend',c.vx+'x')});
-    D.short.open.forEach(function(p){var r=rNow(p,LP(p.ex,p.id));add(normBase(p.base),'open',SIDE[p.side]+(r==null?'':' '+(r>=0?'+':'')+r.toFixed(1)+'R'))})}
-  if(D.layout)D.layout.active.forEach(function(it){var px=lpLayout(it);add(normBase(it.base),'layout',px?((px/it.entry-1)*100).toFixed(1)+'%':'日收 '+((it.ret||0)*100).toFixed(1)+'%')});
-  if(D.cross){D.cross.active.forEach(function(it){add(normBase(it.base,it.stock),'crossA',it.deadT?'已死叉':'仍成立')});
-    D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t))})}
+  if(D.hourly)D.hourly.recent.forEach(function(a){add(normBase(a.base),'hourly',a.x1+'x '+tpe(a.t)+' @'+fp(a.price))});
+  if(D.short){D.short.pending.forEach(function(c){add(normBase(c.base),'pend',c.vx+'x @'+fp(c.close))});
+    D.short.open.forEach(function(p){var r=rNow(p,LP(p.ex,p.id));add(normBase(p.base),'open',SIDE[p.side]+(r==null?'':' '+(r>=0?'+':'')+r.toFixed(1)+'R')+' @'+fp(p.entry))})}
+  if(D.layout)D.layout.active.forEach(function(it){var px=lpLayout(it);add(normBase(it.base),'layout',(px?((px/it.entry-1)*100).toFixed(1)+'%':'日收 '+((it.ret||0)*100).toFixed(1)+'%')+' @'+fp(it.entry))});
+  if(D.cross){D.cross.active.forEach(function(it){add(normBase(it.base,it.stock),'crossA',(it.deadT?'已死叉':'仍成立')+' @'+fp(it.close))});
+    D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t)+' @'+fp(it.close))})}
   return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b]}}).filter(function(x){return x.n>=2})
     .sort(function(a,b){return (b.n-a.n)||(inWatch(b.b)-inWatch(a.b))||a.b.localeCompare(b.b)})}
 var MODEXP={'盤中爆量':3,'盤中預警':3,'短線清單':3,'布局清單':30,'金叉清單':6,'掃流動性':6};
