@@ -137,7 +137,7 @@ export const groupByBase = entries => {
 
 /**
  * entries：[{ venue, sym, base, cat, stats }]（同一小時、三家所有算得出 stats 的合約）
- * ctx（選填）：earlyOf(key) → 同一小時盤中推算已通知的 { min }；preOf(key) → 12 小時內最早一次預警的時間
+ * ctx（選填）：earlyOf(key) → 同一小時盤中推算已通知的 { min }；preOf(key) → 12 小時內最早一次預警的 { t, price }（舊版回傳時間數字也接受）
  * 回傳本輪要通知的事件（正式爆量＋連續放量），並更新 state.last／state.recent
  */
 export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
@@ -155,7 +155,9 @@ export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
       if (!again) continue;
     }
     const early = ctx.earlyOf ? ctx.earlyOf(key) : null;
-    const preT = ctx.preOf ? ctx.preOf(key) : null;
+    const pre = ctx.preOf ? ctx.preOf(key) : null;
+    const preT = pre == null ? null : typeof pre === 'number' ? pre : pre.t;
+    const prePx = pre && typeof pre === 'object' && pre.price ? pre.price : null;
     alerts.push({
       t: T, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat,
       x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1), qv: Math.round(e.stats.qv), chg: +(e.stats.chg * 100).toFixed(2),
@@ -164,7 +166,7 @@ export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
       ...(ramp ? { ramp: true, cx: +e.stats.cx.toFixed(1), ...(e.stats.cxs != null && e.stats.cxs < cfg.ramp.cumX && e.stats.x1 < cfg.pre.sameX ? { season: true } : {}) } : {}),
       ...(spike ? {} : { rampOnly: true }),
       ...(early ? { earlyMin: early.min } : {}),
-      ...(preT != null && preT < T ? { preH: Math.round((T - preT) / H) } : {}),
+      ...(preT != null && preT < T ? { preH: Math.round((T - preT) / H), ...(prePx ? { prePx } : {}) } : {}),
       ...quietOf(e.stats.chg * 100, e.stats.rng, e.cat)
     });
     state.last[key] = { t: T, x1: e.stats.x1, ...(ramp ? { cx: e.stats.cx } : {}) };
@@ -202,7 +204,7 @@ export function tagsOf(a) {
 export function noteOf(a) {
   const n = [];
   if (a.earlyMin) n.push(`第 ${a.earlyMin} 分已推算通知`);
-  if (a.preH) n.push(`${a.preH} 小時前已預警`);
+  if (a.preH) n.push(`${a.preH} 小時前已預警${a.prePx ? `（預警價 ${fmtP(a.prePx)}${a.price ? `，至今 ${a.price >= a.prePx ? '+' : ''}${((a.price / a.prePx - 1) * 100).toFixed(1)}%` : ''}）` : ''}`);
   return n.join('｜');
 }
 const xLine = a => a.rampOnly

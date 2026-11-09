@@ -340,7 +340,7 @@ main{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-ove
 @media(max-width:900px){.t thead{display:none}.t,.t tbody{display:block}
   .t tr{display:flex;flex-wrap:wrap;gap:2px 12px;padding:8px 0;border-bottom:1px solid var(--line)}
   .t td{padding:0;border:0;text-align:left!important}.t td.c0{flex-basis:100%}
-  .t td[data-l]:before{content:attr(data-l);color:var(--mut);font-size:11px;margin-right:4px}
+  .t td:empty{display:none}.t td[data-l]:before{content:attr(data-l);color:var(--mut);font-size:11px;margin-right:4px}
   .t td.mh{display:none}.t tbody tr:hover td{background:none}
   .t tr.hs{border-bottom:0;padding-bottom:2px}.t tr.subr{padding-top:0}.t td.c0{min-width:0}}
 h2{font-size:13px;color:var(--mut);margin:14px 0 6px;font-weight:600;display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px}
@@ -512,6 +512,7 @@ var COLS={
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
     {k:'chg',l:'1H',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
     {k:'qv',l:'成交額',n:1,s:function(a){return a.qv},v:function(a){return money(a.qv)}},
+    {k:'prePx',l:'預警價',n:1,s:function(a){var p=prePxOf(a);return p?p.price:null},v:function(a){var p=prePxOf(a);return p?fp(p.price):''},tt:function(a){var p=prePxOf(a);return p?'預警 '+tpe(p.t)+'，到爆量收 '+((a.price/p.price-1)*100).toFixed(1)+'%':''}},
     {k:'price',l:'爆量收',n:1,m:1,v:function(a){return fp(a.price)}},
     {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
     {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
@@ -594,9 +595,15 @@ COLS.early=function(){return [
   {k:'qvNow',l:'已成交',n:1,s:function(a){return a.qvNow},v:function(a){return money(a.qvNow||0)}},
   {k:'chg',l:'當時',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
   {k:'chg24',l:'前24h／ATR',n:1,s:function(a){return a.chg24!=null&&a.atrp?a.chg24/a.atrp:null},v:function(a){return a.chg24==null?'—':pc100(a.chg24)+' <span class="cat">'+a.atrp+'%</span>'}},
+  {k:'price',l:'推算時價',n:1,v:function(a){return a.price?fp(a.price):'—'}},
   {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
   {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
   {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'}}]};
+/* 正式爆量的預警價：新紀錄直接帶 prePx；舊紀錄從 12 小時內的預警清單找同一家同一檔最早那筆 */
+function prePxOf(a){if(!a.preH)return null;var t0=a.t-a.preH*3600e3;
+  if(a.prePx)return {price:a.prePx,h:a.preH,t:t0};
+  var ps=((D.pre&&D.pre.pre)||[]).filter(function(p){return p.venue===a.venue&&p.sym===a.sym&&p.t<a.t&&p.t>=a.t-12*3600e3&&p.price});
+  if(!ps.length)return null;var p=ps.reduce(function(x,y){return y.t<x.t?y:x});return {price:p.price,h:Math.round((a.t-p.t)/3600e3),t:p.t}}
 COLS.pre=function(){return [
   {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.closed?'<span class="cat">週末休市</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
   {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
@@ -605,6 +612,8 @@ COLS.pre=function(){return [
   {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return a.x1+'x'}},
   {k:'qv',l:'成交額',n:1,s:function(a){return a.qv},v:function(a){return money(a.qv)}},
   {k:'chg',l:'1H',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
+  {k:'price',l:'預警價',n:1,v:function(a){return a.price?fp(a.price):'—'}},
+  {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
   {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
   {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+VL[a.venue]+'</span>'}}]};
 COLS.ws=function(){return [
