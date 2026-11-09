@@ -51,9 +51,12 @@ export function projectBars(bars, live, atMs, cfg = EARLY) {
 export function preContext(pstate, T, cfg = EARLY) {
   return {
     earlyOf: key => { const e = pstate.earlyLast[key]; return e && e.t === T && !e.moved ? e : null; },
+    /* 12 小時內最早一次預警：{ t, price }（price＝預警那根 1H 收盤價） */
     preOf: key => {
-      const ts = pstate.pre.filter(p => `${p.venue}:${p.sym}` === key && p.t < T && p.t >= T - cfg.preKeepHours * H).map(p => p.t);
-      return ts.length ? Math.min(...ts) : null;
+      const ps = pstate.pre.filter(p => `${p.venue}:${p.sym}` === key && p.t < T && p.t >= T - cfg.preKeepHours * H);
+      if (!ps.length) return null;
+      const p = ps.reduce((a, b) => (b.t < a.t ? b : a));
+      return { t: p.t, price: p.price ?? null };
     }
   };
 }
@@ -173,7 +176,7 @@ export function preAlertText(added, T, url = '', ecfg = EARLY) {
   if (!added.length) return '';
   const L = [`【預警】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${added.length} 檔，比前一根 ≥2x 或同時段 ≥2x，還沒到正式爆量）`];
   added.slice(0, ecfg.preMaxLines).forEach(p => L.push(
-    `${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}`));
+    `${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}｜價 ${p.price ? fmtP(p.price) : '—'}`));
   if (added.length > ecfg.preMaxLines) L.push(`另有 ${added.length - ecfg.preMaxLines} 檔，見網頁「盤中爆量」分頁`);
   L.push('約 3 成正式爆量在前 1 小時會先出現預警；沒升級的多半是雜訊');
   if (url) L.push(url);
@@ -211,8 +214,8 @@ export function preMarkdown(pstate, { nowMs, warnings = [], note = '', rows = 12
   } else L.push('無');
   L.push('', `## 預警（最近 ${ecfg.preKeepHours} 小時，${pstate.pre.length} 筆）`);
   if (pre.length) {
-    L.push('| 時間 | 標的 | 交易所 | 條件 | 比前一根 | 同時段 | 近48h | 成交額 | 1H 漲跌 |', '|---|---|---|---|---|---|---|---|---|');
-    pre.forEach(p => L.push(`| ${tpe(p.t).slice(5, 16)} | ${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］ | ${VL[p.venue]} | ${PRE_C[p.c] || p.c} | ${sx(p.xp)} | ${p.x1}x | ${p.x2}x | ${money(p.qv)} | ${pcs(p.chg)} |`));
+    L.push('| 時間 | 標的 | 交易所 | 條件 | 比前一根 | 同時段 | 近48h | 成交額 | 1H 漲跌 | 預警價 |', '|---|---|---|---|---|---|---|---|---|---|');
+    pre.forEach(p => L.push(`| ${tpe(p.t).slice(5, 16)} | ${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］ | ${VL[p.venue]} | ${PRE_C[p.c] || p.c} | ${sx(p.xp)} | ${p.x1}x | ${p.x2}x | ${money(p.qv)} | ${pcs(p.chg)} | ${p.price ? fmtP(p.price) : '—'} |`));
   } else L.push('無');
   if (pstate.early.length > rows || pstate.pre.length > rows) L.push('', `（表格各只列最近 ${rows} 筆，完整紀錄在網頁）`);
   if (warnings.length) { L.push(''); L.push(`## 資料警告（${warnings.length}）`); warnings.slice(0, 20).forEach(w => L.push(`- ${w}`)); }

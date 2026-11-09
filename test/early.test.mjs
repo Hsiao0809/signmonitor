@@ -158,3 +158,23 @@ test('這根自己正在急拉的不算已漲過，照樣推播', () => {
   assert.ok(Math.abs(mv.chg24) < 1e-9);
   assert.equal(E.movedOf(mv), null);
 });
+
+test('預警訊息附價格；正式爆量附預警價與至今漲跌', () => {
+  const ps = E.emptyPre();
+  const k = { venue: 'okx', sym: 'A-USDT-SWAP', base: 'A', cat: 'crypto' };
+  const got = E.pickPre(ps, [{ ...k, stats: { x1: 2.5, x2: 2, xp: 2.1, cx: null, qv: 5e5, chg: 0, price: 0.3712 } }], T - 3 * H);
+  assert.match(E.preAlertText(got, T - 3 * H), /｜價 0\.3712/);
+  /* 更晚又預警一次：仍以最早那次為準 */
+  E.pickPre(ps, [{ ...k, stats: { x1: 6, x2: 3, xp: 2.5, cx: null, qv: 9e5, chg: 0, price: 0.38 } }], T - H);
+  const a = HR.pickAlerts(HR.emptyHourly(), [{ ...k, stats: { x1: 8, x2: 5, xp: 3, cx: null, qv: 4e6, chg: 0, price: 0.3864 } }], T, HR.HOURLY, E.preContext(ps, T));
+  assert.equal(a[0].preH, 3);
+  assert.equal(a[0].prePx, 0.3712);
+  assert.match(HR.hourlyAlertText(a, T), /3 小時前已預警（預警價 0\.3712，至今 \+4\.1%）/);
+});
+
+test('preOf 舊版回傳時間數字仍可用', () => {
+  const k = { venue: 'okx', sym: 'B-USDT-SWAP', base: 'B', cat: 'crypto' };
+  const a = HR.pickAlerts(HR.emptyHourly(), [{ ...k, stats: { x1: 8, x2: 5, xp: 3, cx: null, qv: 4e6, chg: 0, price: 1 } }], T, HR.HOURLY, { preOf: () => T - 2 * H });
+  assert.equal(a[0].preH, 2);
+  assert.equal(a[0].prePx, undefined);
+});
