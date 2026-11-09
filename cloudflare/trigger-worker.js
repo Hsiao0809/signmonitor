@@ -48,8 +48,8 @@ async function gh(env, path, init = {}) {
   if (!r.ok && r.status !== 204) throw new Error(`GitHub ${r.status}：${(await r.text()).slice(0, 200)}`);
   return r.status === 204 ? null : r.json();
 }
-async function dispatch(env) {
-  await gh(env, `/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main', inputs: { daily: 'auto' } }) });
+async function dispatch(env, inputs = { daily: 'auto' }) {
+  await gh(env, `/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main', inputs }) });
 }
 async function watchIssue(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
@@ -114,6 +114,7 @@ function needOf(d) {
   if (d.short) [...d.short.pending, ...d.short.open].forEach(c => add(c.ex, c.id));
   if (d.layout) d.layout.active.forEach(it => { const v = layoutVenue(it); if (v) add(v, it.syms[v]); });
   if (d.hourly) d.hourly.recent.forEach(a => add(a.venue, a.sym));
+  if (d.pre) [...d.pre.early, ...d.pre.pre].forEach(a => add(a.venue, a.sym));
   return need;
 }
 /* 布局清單用哪一家報價：OKX → Bitget（快照）→ Bybit */
@@ -122,22 +123,24 @@ function layoutVenue(it) { const s = it.syms || {}; return ['okx', 'bitget', 'by
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls, cs, sn, sw, qs] = await Promise.all([
+  const [hs, ss, ls, cs, sn, sw, qs, ps] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
     stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
     stateOf(by('金叉清單')?.body, 'CROSS_STATE'),
     stateOf(by('行情快照')?.body, 'SNAPSHOT_STATE'),
     stateOf(by('掃流動性')?.body, 'SWEEP_STATE'),
-    stateOf(by('量增價平')?.body, 'QUIET_STATE')
+    stateOf(by('量增價平')?.body, 'QUIET_STATE'),
+    stateOf(by('盤中預警')?.body, 'PRE_STATE')
   ]);
-  const urls = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
-  const updated = Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
+  const urls = Object.fromEntries(['盤中爆量', '盤中預警', '短線清單', '布局清單', '金叉清單', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
+  const updated = Object.fromEntries(['盤中爆量', '盤中預警', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
   const d = {
     urls, updated,
-    warnings: Object.fromEntries(['盤中爆量', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
+    warnings: Object.fromEntries(['盤中爆量', '盤中預警', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
     watch: parseWatch(by(WATCH_TITLE)?.body),
     hourly: hs ? { lastHour: hs.lastHour, recent: hs.recent || [] } : null,
+    pre: ps ? { early: ps.early || [], pre: ps.pre || [], lastSlot: ps.lastSlot, lastPreHour: ps.lastPreHour } : null,
     short: ss ? {
       lastDaily: ss.lastDaily,
       pending: (ss.pending || []).map(c => pick(c, ['base', 'cat', 'ex', 'id', 'dayT', 'hi', 'lo', 'close', 'vx', 'chgDay', 'pattern', 'quiet', 'qlim', 'atrp'])),
@@ -247,8 +250,9 @@ export default {
       return json({ error: e.message }, 500);
     }
   },
+  /* 第 50 分：完整一輪；第 15、30、45 分：盤中推算（wrangler.toml 的 crons） */
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(dispatch(env));
+    ctx.waitUntil(dispatch(env, event.cron === '50 * * * *' ? { daily: 'auto' } : { mode: 'intrahour' }));
   }
 };
 
@@ -393,8 +397,8 @@ try{var _t=localStorage.getItem('sm_tab');if(/^(home|hourly|short|layout|cross|w
 function lsg(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lss(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 /* 篩選與排序：預設值；使用者改過的存在瀏覽器，重新整理後保留（搜尋字不保留） */
-var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0,quiet:0},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,quiet:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0,quiet:0},cross:{q:'',cat:'all',watch:0}};
-var SD={hourly:{k:'t',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
+var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0,quiet:0,pane:'spike'},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,quiet:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0,quiet:0},cross:{q:'',cat:'all',watch:0}};
+var SD={hourly:{k:'t',d:-1},early:{k:'t',d:-1},pre:{k:'t',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
 function merge(def,sv){var o={};Object.keys(def).forEach(function(k){var a=def[k],b=(sv||{})[k]||{},x={};Object.keys(a).forEach(function(j){x[j]=(j in b)?b[j]:a[j]});o[k]=x});return o}
 var F=merge(FD,lsg('sm_f',{})),S=merge(SD,lsg('sm_s',{}));
 Object.keys(F).forEach(function(k){F[k].q=''});
@@ -477,6 +481,10 @@ function bn(sym){return 'https://www.tradingview.com/chart/?symbol='+encodeURICo
 function stk(x){return CT(x.stock?'stock':'crypto')}
 function normBase(b,stock){b=String(b||'').toUpperCase();return stock&&/B$/.test(b)?b.slice(0,-1):b}
 function hW(a){return a.watch||inWatch(a.base)}
+/* 盤中爆量的附加標記：連續放量、時段性、盤中推算已通知、幾小時前預警 */
+function RT(a){return (a.ramp?'<span class="badge" title="連續 4 根逐根放大，3 根累積 '+a.cx+'x 近48h">連續放量</span>':'')+(a.season?'<span class="cat" title="這幾個小時平常每天也會放量">時段性</span>':'')+
+  (a.earlyMin?'<span class="cat" title="第 '+a.earlyMin+' 分盤中推算已通知">推算:'+a.earlyMin+'</span>':'')+(a.preH?'<span class="cat" title="'+a.preH+' 小時前已預警">預警 '+a.preH+'h前</span>':'')}
+var PREC={A:'比前一根',B:'同時段',AB:'前一根＋同時段'};
 function lRet(it){var px=lpLayout(it);return px?px/it.entry-1:it.ret}
 /* 等待觸發的多空：每檔都同時有做多、做空兩個觸發價。選「做多」＝當做多候選看：排除已跌破做空價的，距觸發只算到做多價 */
 function pendOk(c,sd){if(sd==='all')return true;var px=LP(c.ex,c.id);if(px==null)return true;return sd==='long'?!(px<c.lo):!(px>c.hi)}
@@ -485,7 +493,7 @@ function nearOf(c){var px=LP(c.ex,c.id),sd=F.short.side;if(px==null)return null;
   if(px>c.hi||px<c.lo)return 0;return Math.min((c.hi/px-1)*100,(1-c.lo/px)*100)}
 var COLS={
   hourly:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+(hW(a)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(a.base))+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+RT(a)+(hW(a)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(a.base))+'</div>'}},
     {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
     {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
@@ -564,6 +572,27 @@ var COLS={
     {k:'mae',l:'最大跌',n:1,s:function(p){return p.mae},v:function(p){return pc100(p.mae)}}]}
 };
 COLS.wh=COLS.hourly;
+/* 盤中推算（第 15／30／45 分）與預警（整點，還沒到正式爆量） */
+COLS.early=function(){return [
+  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
+  {k:'t',l:'時間',s:function(a){return a.t+a.min*60e3},v:function(a){return tpe(a.t)+' <span class="cat">第'+a.min+'分</span>'}},
+  {k:'x1',l:'推算同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
+  {k:'x2',l:'推算近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
+  {k:'qvNow',l:'已成交',n:1,s:function(a){return a.qvNow},v:function(a){return money(a.qvNow||0)}},
+  {k:'chg',l:'當時',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
+  {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
+  {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
+  {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'}}]};
+COLS.pre=function(){return [
+  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.closed?'<span class="cat">週末休市</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
+  {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
+  {k:'c',l:'條件',s:function(a){return a.c},v:function(a){return PREC[a.c]||a.c}},
+  {k:'xp',l:'比前一根',n:1,s:function(a){return a.xp},v:function(a){return a.xp==null?'—':'<b>'+a.xp+'x</b>'}},
+  {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return a.x1+'x'}},
+  {k:'qv',l:'成交額',n:1,s:function(a){return a.qv},v:function(a){return money(a.qv)}},
+  {k:'chg',l:'1H',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
+  {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
+  {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+VL[a.venue]+'</span>'}}]};
 COLS.ws=function(){return [
   {k:'base',l:'代號',dd:1,s:function(e){return e.base},v:function(e){return '<div class="c0w">'+link(e.base,tv(e.ex,e.id,'240'))+CT(e.cat)+'</div>'}},
   {k:'t',l:'4H K',s:function(e){return e.t},v:function(e){return tpe(e.t)}},
@@ -586,7 +615,7 @@ function pass(f,o){
   if(f.quiet&&!o.quiet)return false;return true}
 function sel(k,opts){var v=String(F[TAB][k]);return '<select data-f="'+k+'" class="'+(v!==String(FD[TAB][k])?'on':'')+'">'+opts.map(function(o){return '<option value="'+o[0]+'"'+(String(o[0])===v?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>'}
 function tg(k,l){return '<button class="tg'+(F[TAB][k]?' on':'')+'" data-t="'+k+'">'+l+'</button>'}
-function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='cross'?'crossA':TAB}
+function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='hourly'?({early:'early',pre:'pre'}[F.hourly.pane]||'hourly'):TAB==='cross'?'crossA':TAB}
 /* 區塊：標題固定，內容在區塊裡捲動（電腦） */
 function panel(title,body,cls){return '<section class="pnl '+(cls||'')+'">'+(title?'<h2>'+title+'</h2>':'')+'<div class="pnl-b">'+body+'</div></section>'}
 function fbar(){
@@ -594,6 +623,7 @@ function fbar(){
   var h='<input id="q" type="search" placeholder="搜尋代號（按 / 跳到這裡）" value="'+esc(f.q)+'" autocomplete="off" autocapitalize="characters" spellcheck="false"><div class="fc">';
   if(TAB==='short'&&D.short){h+='<span class="seg">'+[['open','持倉 '+D.short.open.length],['pend','等待觸發 '+D.short.pending.length],['closed','成績 '+(D.short.closed||[]).length]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>';
     h+=sel('side',[['all','多空都看'],['long','只看做多'],['short','只看做空']])}
+  if(TAB==='hourly'&&D.hourly){var P=D.pre;h+='<span class="seg">'+[['spike','正式爆量 '+D.hourly.recent.length],['early','盤中推算 '+(P?P.early.length:0)],['pre','預警 '+(P?P.pre.length:0)]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
   h+=sel('cat',TAB==='cross'?CATS.slice(0,3):CATS);
   if('ven' in f)h+=sel('ven',VENS);
   if(TAB==='hourly')h+=sel('win',[['72','72 小時'],['24','24 小時'],['6','6 小時']])+sel('minx',[['0','倍數不限'],['5','≥ 5x'],['10','≥ 10x'],['20','≥ 20x'],['50','≥ 50x']]);
@@ -685,12 +715,12 @@ function todoGroups(){
     {k:'stop',l:'近6根低',n:1,v:function(o){return fp(o.it.stopPx)+' <span class="cat">-'+(o.it.stopPct||0).toFixed(1)+'%</span>'}}]});
   /* 盤中爆量：5 小時內倍數前 5 名，加上所有自選（同一檔多家同時爆量只列倍數最高那家） */
   var hx=[];
-  if(hr){var best={};hr.recent.filter(function(a){return a.t>=now-5*3600e3}).forEach(function(a){if(!best[a.base]||a.x1>best[a.base].x1)best[a.base]=a});
+  if(hr){var best={},src=hr.recent.concat(D.pre?D.pre.early.map(function(a){return Object.assign({},a,{proj:1})}):[]);src.filter(function(a){return a.t>=now-5*3600e3}).forEach(function(a){if(!best[a.base]||a.x1>best[a.base].x1)best[a.base]=a});
     var uniq=Object.keys(best).map(function(k){return best[k]}).sort(function(a,b){return b.x1-a.x1}),top=uniq.slice(0,5);
     uniq.forEach(function(a){if(hW(a)&&top.indexOf(a)<0)top.push(a)});
     top.forEach(function(a){hx.push({base:a.base,url:tv(a.venue,a.sym,'60'),ct:CT(a.cat),tags:'',w:hW(a),a:a,ref:a.price,px:LP(a.venue,a.sym)})})}
-  G.push({id:'th',title:'盤中爆量',note:'5 小時內倍數前 5 名＋自選',rows:hx,cols:[TC0,
-    {k:'x',l:'倍數',n:1,s:function(o){return o.a.x1},v:function(o){return '<b>'+o.a.x1+'x</b>'}},
+  G.push({id:'th',title:'盤中爆量',note:'5 小時內倍數前 5 名＋自選（含盤中推算）',rows:hx,cols:[TC0,
+    {k:'x',l:'倍數',n:1,s:function(o){return o.a.x1},v:function(o){return '<b>'+o.a.x1+'x</b>'+(o.a.proj?' <span class="cat">推算:'+o.a.min+'</span>':'')+(o.a.rampOnly?' <span class="cat">連續放量</span>':'')}},
     {k:'t',l:'時間',s:function(o){return o.a.t},v:function(o){return tpe(o.a.t)}},
     {k:'ref',l:'爆量收',n:1,v:function(o){return fp(o.ref)}},
     {k:'px',l:'現價',n:1,v:function(o){return FP(o.a.venue,o.px)}},
@@ -721,7 +751,7 @@ function overlap(){
     D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t))})}
   return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b]}}).filter(function(x){return x.n>=2})
     .sort(function(a,b){return (b.n-a.n)||(inWatch(b.b)-inWatch(a.b))||a.b.localeCompare(b.b)})}
-var MODEXP={'盤中爆量':3,'短線清單':3,'布局清單':30,'金叉清單':6,'掃流動性':6};
+var MODEXP={'盤中爆量':3,'盤中預警':3,'短線清單':3,'布局清單':30,'金叉清單':6,'掃流動性':6};
 function status(){
   var s='<div class="card">';
   Object.keys(MODEXP).forEach(function(t){
@@ -767,8 +797,13 @@ function hourly(){
   var h=D.hourly;if(!h){CNT=null;return '<div class="empty">還沒有盤中爆量資料</div>'}
   var f=F.hourly,ref=(h.lastHour||Date.now())+3600e3,w=(+f.win)*3600e3,mx=+f.minx;
   var list=h.recent.filter(function(a){return a.t>=ref-w&&a.x1>=mx&&pass(f,{base:a.base,cat:a.cat,vens:[a.venue],watch:hW(a),single:a.single,quiet:a.quiet})});
+  var P=D.pre,ok=function(a){return a.x1>=mx&&pass(f,{base:a.base,cat:a.cat,vens:[a.venue],watch:hW(a),single:a.single,quiet:a.quiet})};
+  if(f.pane==='early'){var el=P?P.early.filter(function(a){return a.t>=Date.now()-w&&ok(a)}):[];CNT=[el.length,P?P.early.length:0];
+    return '<div class="vs"><div class="meta">每小時第 15、30、45 分，用進行中那根 1H K 的已成交量推算整根，達正式爆量門檻就推播；只有 OKX、Bitget，保留 24 小時。最近一次：'+(P&&P.lastSlot?tpe(+P.lastSlot.split(':')[0])+' 第 '+P.lastSlot.split(':')[1]+' 分':'—')+'。實測第 15 分約 5 成、30 分約 7 成、45 分約 8 成收盤後真的成為正式爆量。</div>'+panel('',table('early',el,COLS.early(),P?'無':'還沒有盤中推算資料'),'grow')+'</div>'}
+  if(f.pane==='pre'){var pl=P?P.pre.filter(function(a){return a.t>=Date.now()-w&&ok(a)}):[];CNT=[pl.length,P?P.pre.length:0];
+    return '<div class="vs"><div class="meta">整點收盤後，比前一根 ≥2x 或同時段 ≥2x、但還沒到正式爆量；同一檔 6 小時內只列一次，保留 12 小時。約 3 成正式爆量在前 1 小時會先出現預警，沒升級的多半是雜訊。</div>'+panel('',table('pre',pl,COLS.pre(),P?'無':'還沒有預警資料'),'grow')+'</div>'}
   CNT=[list.length,h.recent.length];
-  return '<div class="vs"><div class="meta">最近檢查：'+tpe(h.lastHour)+' 那根 1H K，保留 72 小時內紀錄。滑鼠停在交易所欄可看其他家倍數。</div>'+panel('',table('hourly',list,COLS.hourly()),'grow')+'</div>'}
+  return '<div class="vs"><div class="meta">最近檢查：'+tpe(h.lastHour)+' 那根 1H K，保留 72 小時內紀錄；含【連續放量】（連續 4 根逐根放大）。滑鼠停在交易所欄可看其他家倍數。</div>'+panel('',table('hourly',list,COLS.hourly()),'grow')+'</div>'}
 
 /* ---------- 短線 ---------- */
 function stat(cl,val,fmt){if(!cl.length)return '<small>0 筆</small>';var w=cl.filter(function(p){return val(p)>0}).length,sum=cl.reduce(function(a,p){return a+val(p)},0);

@@ -63,6 +63,16 @@ export const VENUES = {
     async hourly(sym) {
       const j = await getJSON(`https://www.okx.com/api/v5/market/candles?instId=${sym}&bar=1H&limit=300`);
       return (j?.data || []).filter(k => k[8] === '1').map(k => bar(k[0], k[1], k[2], k[3], k[4], k[7])).sort((a, b) => a.t - b.t);
+    },
+    /* 盤中推算用：已收盤的 1H K＋進行中那根（live，at＝抓到的時間） */
+    async hourlyLive(sym) {
+      const j = await getJSON(`https://www.okx.com/api/v5/market/candles?instId=${sym}&bar=1H&limit=300`);
+      const at = Date.now(), rows = j?.data || [];
+      const lv = rows.find(k => k[8] === '0');
+      return {
+        bars: rows.filter(k => k[8] === '1').map(k => bar(k[0], k[1], k[2], k[3], k[4], k[7])).sort((a, b) => a.t - b.t),
+        live: lv ? bar(lv[0], lv[1], lv[2], lv[3], lv[4], lv[7]) : null, at
+      };
     }
   },
   bitget: {
@@ -81,6 +91,12 @@ export const VENUES = {
       const j = await getJSON(`https://api.bitget.com/api/v2/mix/market/candles?symbol=${sym}&productType=USDT-FUTURES&granularity=1H&limit=200`);
       const now = Date.now();
       return (j?.data || []).map(k => bar(k[0], k[1], k[2], k[3], k[4], k[6])).filter(b => b.t + 3600e3 <= now).sort((a, b) => a.t - b.t);
+    },
+    async hourlyLive(sym) {
+      const j = await getJSON(`https://api.bitget.com/api/v2/mix/market/candles?symbol=${sym}&productType=USDT-FUTURES&granularity=1H&limit=200`);
+      const at = Date.now();
+      const all = (j?.data || []).map(k => bar(k[0], k[1], k[2], k[3], k[4], k[6])).sort((a, b) => a.t - b.t);
+      return { bars: all.filter(b => b.t + 3600e3 <= at), live: all.find(b => b.t + 3600e3 > at && b.t <= at) || null, at };
     }
   },
   /* ---- Bybit API 擋美國雲端，改讀它公開的逐筆成交檔；需要外部快取（見 run.mjs） ---- */

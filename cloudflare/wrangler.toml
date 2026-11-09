@@ -8,4 +8,5 @@ workers_dev = true
 keep_vars = true
 
 [triggers]
-crons = ["50 * * * *"]
+# 第 50 分：完整一輪；第 15、30、45 分：盤中推算
+crons = ["50 * * * *", "15,30,45 * * * *"]

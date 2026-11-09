@@ -26,7 +26,7 @@ export function saveCache(file, c) {
 }
 
 /** 整點前先做：三家合約清單、Bybit 股票／商品對照；watch＝自選代號（一律監控） */
-export async function prepare(cache, warnings, watch = []) {
+export async function prepare(cache, warnings, watch = [], { bybit = true } = {}) {
   const W = new Set(watch);
   const lists = {}, refPrice = {}, refCat = {}, cryptoPrice = {};
   for (const ex of ['okx', 'bitget']) {
@@ -43,6 +43,7 @@ export async function prepare(cache, warnings, watch = []) {
     .filter(m => W.has(baseOf(m)) || (!isExcluded(m.base, TCFG) && m.qv24h >= (TCFG.liqFloor[m.cat] ?? TCFG.liqFloor.crypto)))
     .map(m => ({ venue: ex, sym: m.id, base: baseOf(m), cat: m.cat, watch: W.has(baseOf(m)) }));
   const okx = pick('okx'), bitget = pick('bitget');
+  if (!bybit) return { okx, bitget, bybit: [], refPrice };
 
   const notStock = new Set(cache.notStock);
   let bl = [];

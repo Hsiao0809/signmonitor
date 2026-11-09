@@ -18,6 +18,7 @@ import * as LS from './layout-scan.mjs';
 import * as V from './venues.mjs';
 import * as HR from './hourly.mjs';
 import * as HS from './hourly-scan.mjs';
+import * as EA from './early.mjs';
 import { parseWatch } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
@@ -258,17 +259,25 @@ async function main() {
     cw.forEach(w => console.log('cross warning:', w));
   }
 
-  /* ---------- 盤中爆量：整點收盤後判斷 ---------- */
-  let halerts = [];
+  /* ---------- 盤中爆量：整點收盤後判斷（正式爆量＋連續放量；預警寫「盤中預警」Issue） ---------- */
+  let halerts = [], hpre = [];
+  const preBodyIn = a['pre-body'] && fs.existsSync(a['pre-body']) ? fs.readFileSync(a['pre-body'], 'utf8') : '';
+  const pstate = a['pre-body'] ? EA.extractPre(preBodyIn) : null;
+  if (a['pre-body'] && !pstate) hw.push('盤中預警 Issue 的狀態無法解析；為避免覆蓋，本輪略過預警');
   if (prep) {
     try {
       HS.rememberCaptured(cache, captured, nowMs);
       const entries = await HS.collectEntries(prep, cache, captured, targetHour, hw);
-      halerts = HR.pickAlerts(hstate, entries, targetHour);
+      halerts = HR.pickAlerts(hstate, entries, targetHour, HR.HOURLY, pstate ? EA.preContext(pstate, targetHour) : {});
+      if (pstate) hpre = EA.pickPre(pstate, entries, targetHour);
       const cnt = v => entries.filter(e => e.venue === v).length;
       const hnote = `最近一次檢查：${T.tpe(targetHour)}–${T.tpe(targetHour + HOUR).slice(11)} 台灣時間這根 1H K；OKX ${cnt('okx')} 檔、Bitget ${cnt('bitget')} 檔、Bybit ${cnt('bybit')} 檔，本小時 ${halerts.length} 檔`;
-      fs.writeFileSync(path.join(outDir, 'hourly-body.md'), HR.embedHourly(T.render(HR.hourlyMarkdown(hstate, { nowMs, warnings: hw, note: hnote }), 'md'), hstate));
+      fs.writeFileSync(path.join(outDir, 'hourly-body.md'), HR.hourlyBody(hstate, { nowMs, warnings: hw, note: hnote }, t => T.render(t, 'md')));
       if (halerts.length) fs.writeFileSync(path.join(outDir, 'hourly-comment.md'), T.render(HR.hourlyAlertText(halerts, targetHour, hw), 'md').replace(/\n/g, '  \n'));
+      if (pstate) {
+        const pnote = `最近一次預警：${T.tpe(targetHour)}–${T.tpe(targetHour + HOUR).slice(11)} 台灣時間這根 1H K，新增 ${hpre.length} 檔`;
+        fs.writeFileSync(path.join(outDir, 'pre-body.md'), EA.preBody(pstate, { nowMs, note: pnote }, t => T.render(t, 'md')));
+      }
     } catch (e) { hw.push(`盤中爆量判斷失敗：${e.message}`); }
   }
   HS.saveCache(cachePath, cache);
@@ -313,6 +322,8 @@ async function main() {
   if (qadded.length) msgs.push(Q.quietAlertText(qadded, nowMs, a['quiet-url'] || ''));
   const hmsg = HR.hourlyAlertText(halerts, targetHour, [], a['hourly-url'] || '');
   if (hmsg) msgs.push(hmsg);
+  const pmsg = EA.preAlertText(hpre, targetHour, a['pre-url'] || '');
+  if (pmsg) msgs.push(pmsg);
   if (cross?.newA?.length) msgs.push(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || ''));
   if (cross?.failed) msgs.push(`訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次`);
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
@@ -343,7 +354,7 @@ async function main() {
     `snapshot=${snap ? `market=${snap.market.length} bitget=${Object.keys(snap.px.bitget).length} binance=${Object.keys(snap.px.binance).length}` : 'skip'}`,
     `sweep=${sweep ? `targets=${sweep.n} events=${sweep.events} added=${sweep.added}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
-    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
+    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');
   console.log(summary);
   [...warnings, ...hw].forEach(w => console.log('warning:', w));

@@ -9,6 +9,8 @@ name: Monitor
 # - 每日掃描：台灣時間 09:00 後當天第一輪（布局清單等 Bybit 成交檔 09:12 公布後才跑）
 # GitHub 排程可能延遲或略過：晚於整點才啟動時改評估上一小時（Bybit 該小時會缺），
 # 每日掃描與 4H 追蹤則由下一輪自動補上。
+# mode=intrahour：每小時第 15、30、45 分由 Cloudflare Worker 觸發，只做盤中推算（OKX、Bitget），
+# 只寫「盤中預警」Issue；第 48 分之後或同一時段已推算過就直接略過。
 on:
   schedule:
     - cron: "50 * * * *"
@@ -19,6 +21,11 @@ on:
         type: choice
         options: [auto, force, skip]
         default: auto
+      mode:
+        description: full＝完整一輪；intrahour＝只做盤中推算（第 10–47 分執行才有效）
+        type: choice
+        options: [full, intrahour]
+        default: full
 
 permissions:
   contents: write
@@ -83,8 +90,10 @@ jobs:
             await ensure("行情快照", "snapshot-body.md", "snapshot_");
             await ensure("掃流動性", "sweep-body.md", "sweep_");
             await ensure("量增價平", "quiet-body.md", "quiet_");
+            await ensure("盤中預警", "pre-body.md", "pre_");
 
       - name: Restore Bybit daily cache
+        if: ${{ inputs.mode != 'intrahour' }}
         uses: actions/cache/restore@v4
         with:
           path: .cache/bybit-daily.json
@@ -92,6 +101,7 @@ jobs:
           restore-keys: bybit-daily-
 
       - name: Run monitor
+        if: ${{ inputs.mode != 'intrahour' }}
         env:
           DAILY_MODE: ${{ inputs.daily || 'auto' }}
           ISSUE_URL: ${{ steps.issue.outputs.url }}
@@ -99,14 +109,23 @@ jobs:
           HOURLY_URL: ${{ steps.issue.outputs.hourly_url }}
           CROSS_URL: ${{ steps.issue.outputs.cross_url }}
           QUIET_URL: ${{ steps.issue.outputs.quiet_url }}
+          PRE_URL: ${{ steps.issue.outputs.pre_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md
           --bybit-cache .cache/bybit-daily.json --out out
-          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL"
+          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL"
+
+      - name: Run intrahour
+        if: ${{ inputs.mode == 'intrahour' }}
+        env:
+          PRE_URL: ${{ steps.issue.outputs.pre_url }}
+        run: >-
+          node src/intrahour.mjs
+          --hourly-body hourly-body.md --pre-body pre-body.md --watch-body watch-body.md --out out --pre-url "$PRE_URL"
 
       - name: Save Bybit daily cache
-        if: ${{ always() && hashFiles('.cache/bybit-daily.json') != '' }}
+        if: ${{ always() && inputs.mode != 'intrahour' && hashFiles('.cache/bybit-daily.json') != '' }}
         uses: actions/cache/save@v4
         with:
           path: .cache/bybit-daily.json
@@ -122,6 +141,7 @@ jobs:
           SNAPSHOT_NUMBER: ${{ steps.issue.outputs.snapshot_number }}
           SWEEP_NUMBER: ${{ steps.issue.outputs.sweep_number }}
           QUIET_NUMBER: ${{ steps.issue.outputs.quiet_number }}
+          PRE_NUMBER: ${{ steps.issue.outputs.pre_number }}
         with:
           script: |
             const fs = require("fs");
@@ -142,6 +162,7 @@ jobs:
             await put("SNAPSHOT_NUMBER", "out/snapshot-body.md", "out/none.md");
             await put("SWEEP_NUMBER", "out/sweep-body.md", "out/none.md");
             await put("QUIET_NUMBER", "out/quiet-body.md", "out/quiet-comment.md");
+            await put("PRE_NUMBER", "out/pre-body.md", "out/none.md");
 
       - name: Send Telegram
         env:
