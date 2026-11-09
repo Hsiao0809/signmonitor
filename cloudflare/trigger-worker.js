@@ -296,6 +296,10 @@ main{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-ove
   .home,.wg{flex:1;min-height:0;grid-template-rows:minmax(0,1fr)}
   .pnl{display:flex;flex-direction:column;min-height:0;flex:0 1 auto}
   .pnl.grow{flex:1 1 auto}.pnl.fix{flex:none}
+  /* keep：不被旁邊的長區塊壓縮；超過上限才在自己區塊內捲動（金叉 A 級最多約 30% 畫面、成績最多約 20%） */
+  .pnl.keep{flex:none}.pnl.keep>.pnl-b{max-height:min(300px,30vh)}.pnl.keep.k3>.pnl-b{max-height:20vh}.pnl.grow.mh{min-height:160px}
+  /* 保險：區塊總高真的超過畫面時，整欄捲動而不是疊在一起 */
+  .vs{overflow-y:auto;overscroll-behavior:contain}
   .pnl>h2{flex:none}
   .pnl-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
   .meta{flex:none}}
@@ -840,9 +844,9 @@ function cross(){
   var A=x.active.filter(P),B=x.recentB.filter(P),cl=(x.closed||[]).filter(P);
   CNT=[A.length+B.length,x.active.length+x.recentB.length];
   var s='<div class="vs"><div class="meta">Binance 現貨 4H，EMA20 上穿 SMA30。最近檢查：'+(x.lastBar?tpe(x.lastBar)+'–'+tpe(x.lastBar+144e5).slice(6):'—')+' 那根 K，範圍 '+(x.universe||0)+' 檔</div>';
-  s+=panel('A 級追蹤中 <small>'+A.length+'　收盤＞SMA200 且量 ≥ 1.5 倍；追蹤 42 根（7 天），死叉＝出場參考</small>',table('crossA',A,COLS.crossA(),'無'));
-  s+=panel('B 級 <small>48 小時內 '+B.length+'，不推播</small>',table('crossB',B,COLS.crossB(),'無'));
-  s+=panel('成績 '+stat(cl,function(p){return p.exitRet},function(v){return (v>=0?'+':'')+v.toFixed(1)+'%（死叉出場）'}),table('crC',cl,COLS.crC(),'尚無（A 級追蹤滿 42 根後結算）'));
+  s+=panel('A 級追蹤中 <small>'+A.length+'　收盤＞SMA200 且量 ≥ 1.5 倍；追蹤 42 根（7 天），死叉＝出場參考</small>',table('crossA',A,COLS.crossA(),'無'),'keep');
+  s+=panel('B 級 <small>48 小時內 '+B.length+'，不推播</small>',table('crossB',B,COLS.crossB(),'無'),'grow mh');
+  s+=panel('成績 '+stat(cl,function(p){return p.exitRet},function(v){return (v>=0?'+':'')+v.toFixed(1)+'%（死叉出場）'}),table('crC',cl,COLS.crC(),'尚無（A 級追蹤滿 42 根後結算）'),'keep k3');
   return s+'</div>'}
 
 /* ---------- 自選 ---------- */
