@@ -366,6 +366,8 @@ a{color:var(--acc)}
 /* 總覽、自選：電腦上分兩欄 */
 .home,.wg{display:grid;gap:0 20px}
 .home>.vs>.pnl:first-child>h2,.wg>.vs>.pnl:first-child>h2{margin-top:10px}
+/* 多模組重疊：只顯示約 5 檔的高度，其餘在區塊內捲動（電腦、手機都一樣） */
+.ovp>.pnl-b{max-height:290px;overflow-y:auto;overscroll-behavior:contain}
 .gh{font-size:13px;font-weight:600;margin:12px 0 2px;color:var(--fg)}.gh:first-child{margin-top:2px}.gh small{font-weight:400;color:var(--mut);font-size:12px}
 @media(max-width:1099px){.home>.todo{order:-1}}
 @media(min-width:1100px){.home{grid-template-columns:420px minmax(0,1fr)}.wg{grid-template-columns:380px minmax(0,1fr)}}
@@ -747,7 +749,7 @@ function home(){
   var ov=o.length?'<div class="card">'+o.map(function(x){
     return '<div class="ov"><div class="l1">'+WT(x.b)+'<span class="sym">'+esc(x.b)+'</span><span class="cat">'+x.n+' 個模組</span></div><div class="chips">'+
       MODS.filter(function(k){return x.m[k[0]]}).map(function(k){return '<span class="badge">'+k[1]+' '+esc(x.m[k[0]])+'</span>'}).join('')+'</div></div>'}).join('')+'</div>':'<div class="card empty">無</div>';
-  var right=panel('大盤',marketCard(),'fix')+panel('量增價平成績',quietCard(),'fix')+panel('多模組重疊 <small>'+o.length+' 檔同時出現在 2 個以上模組</small>',ov,'grow')+panel('系統狀態',status(),'fix');
+  var right=panel('大盤',marketCard(),'fix')+panel('量增價平成績',quietCard(),'fix')+panel('多模組重疊 <small>'+o.length+' 檔同時出現在 2 個以上模組</small>',ov,'ovp')+panel('系統狀態',status(),'fix');
   return (sysBad()?'<div class="card alert" style="flex:none">系統有異常（更新延遲、執行失敗或資料警告），詳見「系統狀態」</div>':'')+'<div class="home"><div class="vs">'+right+'</div><div class="vs todo">'+left+'</div></div>'}
 
 /* ---------- 盤中爆量 ---------- */
