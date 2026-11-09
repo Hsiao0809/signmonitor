@@ -368,6 +368,14 @@ a{color:var(--acc)}
 .home>.vs>.pnl:first-child>h2,.wg>.vs>.pnl:first-child>h2{margin-top:10px}
 /* 多模組重疊：只顯示約 5 檔的高度，其餘在區塊內捲動（電腦、手機都一樣） */
 .ovp>.pnl-b{max-height:290px;overflow-y:auto;overscroll-behavior:contain}
+/* ＋（加入自選）與「自選」標籤同寬，代號才對得齊；底部提示列 */
+.tag{display:inline-block;min-width:32px;text-align:center;box-sizing:border-box}
+.wa{font:inherit;font-size:13px;line-height:15px;min-width:32px;padding:0 4px;border-radius:4px;border:1px dashed var(--line);background:transparent;color:var(--mut);cursor:pointer}
+.wa:hover{color:var(--acc);border-color:var(--acc)}.wa:disabled{cursor:wait;opacity:.7}
+@media(max-width:900px){.wa{min-width:36px;min-height:26px}}
+#toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;display:none;align-items:center;flex-wrap:wrap;gap:8px;max-width:calc(100% - 24px);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+#toast.on{display:flex}#toast.ok{color:var(--up)}#toast.err{color:var(--dn);border-color:var(--dn)}
+#toast input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);width:160px}
 .gh{font-size:13px;font-weight:600;margin:12px 0 2px;color:var(--fg)}.gh:first-child{margin-top:2px}.gh small{font-weight:400;color:var(--mut);font-size:12px}
 @media(max-width:1099px){.home>.todo{order:-1}}
 @media(min-width:1100px){.home{grid-template-columns:420px minmax(0,1fr)}.wg{grid-template-columns:380px minmax(0,1fr)}}
@@ -410,7 +418,9 @@ var TF=new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',d
 function tpe(ms){if(!ms)return '—';var p={};TF.formatToParts(new Date(ms)).forEach(function(x){p[x.type]=x.value});return p.month+'-'+p.day+' '+p.hour+':'+p.minute}
 function md(ms){return new Date(ms).toISOString().slice(5,10)}
 function inWatch(b){return D&&D.watch&&D.watch.indexOf(b)>=0}
-function WT(b){return inWatch(b)?'<span class="tag">自選</span>':''}
+/* 已在自選：顯示「自選」；不在：顯示＋（點一下加入） */
+function WA(b){return '<button class="wa" data-wa="'+esc(b)+'" title="加入自選" aria-label="把 '+esc(b)+' 加入自選">＋</button>'}
+function WT(b){return inWatch(b)?'<span class="tag">自選</span>':WA(b)}
 /* ---------- 掃流動性標記（只標記，沒有回測） ---------- */
 var SWK={spike:'爆量日',pd:'前日',swing:'波段'},SWX=1.5;
 function swOf(b){return D&&D.sweep?D.sweep.events.filter(function(e){return e.base===b}):[]}
@@ -475,7 +485,7 @@ function nearOf(c){var px=LP(c.ex,c.id),sd=F.short.side;if(px==null)return null;
   if(px>c.hi||px<c.lo)return 0;return Math.min((c.hi/px-1)*100,(1-c.lo/px)*100)}
 var COLS={
   hourly:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+(hW(a)?'<span class="tag">自選</span>':'')+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+(hW(a)?'<span class="tag">自選</span>':WA(a.base))+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+'</div>'}},
     {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
     {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
@@ -540,13 +550,13 @@ var COLS={
     {k:'px200',l:'距SMA200',n:1,s:function(it){return it.px200},v:function(it){return pc100(it.px200)}},
     {k:'why',l:'未達 A 級原因',w:1,v:function(it){return esc((it.reasons||[]).join('、'))}}]},
   shC:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,tv(p.ex,p.id,'240'))+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span></div>'}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+WT(p.base)+link(p.base,tv(p.ex,p.id,'240'))+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span></div>'}},
     {k:'r',l:'結果',n:1,s:function(p){return p.r},v:function(p){return '<b>'+rr(p.r)+'</b>'}},
     {k:'out',l:'出場',v:function(p){return OUT[p.outcome]||''}},
     {k:'px',l:'進場 → 出場',n:1,v:function(p){return fp(p.entry)+' → '+fp(p.exit)}},
     {k:'exitT',l:'出場時間',s:function(p){return p.exitT},v:function(p){return tpe(p.exitT)}}]},
   crC:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,bn(p.sym))+stk(p)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+WT(normBase(p.base,p.stock))+link(p.base,bn(p.sym))+stk(p)+'</div>'}},
     {k:'ret',l:'結果',n:1,s:function(p){return p.exitRet},v:function(p){return '<b>'+pc100(p.exitRet)+'</b>'}},
     {k:'out',l:'出場',v:function(p){return p.deadT?'死叉出場':'滿 42 根'}},
     {k:'t',l:'金叉',s:function(p){return p.t},v:function(p){return tpe(p.t)}},
@@ -610,7 +620,7 @@ function item(reason,cls,name,url,extra,tags,notes){
 function layoutUrl(it){var sy=it.syms||{},v=['okx','bitget','bybit'].filter(function(k){return sy[k]})[0];return v?tv(v,sy[v],'D'):null}
 function kvs(o){return o.map(function(x){return '<div><span>'+x[0]+'</span>'+x[1]+'</div>'}).join('')}
 /* 需要處理：依類型分組，每組一張表、各自的欄位；沒有項目的組不顯示 */
-function tdName(o){return '<div class="c0w">'+(o.w?'<span class="tag">自選</span>':'')+link(o.base,o.url)+(o.tags||'')+'</div>'}
+function tdName(o){return '<div class="c0w">'+(o.w?'<span class="tag">自選</span>':WA(o.wb||o.base))+link(o.base,o.url)+(o.tags||'')+'</div>'}
 var TC0={k:'base',l:'代號',dd:1,s:function(o){return o.base},v:tdName};
 function sideB(s){return '<span class="badge '+(s==='long'?'bl':'bs')+'">'+SIDE[s]+'</span>'}
 function aft(o){return o.px&&o.ref?o.px/o.ref-1:null}
@@ -663,7 +673,7 @@ function todoGroups(){
   var cx=[];
   if(cr)cr.active.forEach(function(it){var px=LP('binance',it.sym),dead=it.deadT&&it.deadT+144e5>=now-H8;
     if(!dead&&!(it.t+144e5>=now-H8))return;
-    cx.push({base:it.base,url:bn(it.sym),tags:stk(it),w:inWatch(normBase(it.base,it.stock)),it:it,px:px,dead:dead,ret:dead?it.deadRet:(px?(px/it.close-1)*100:it.ret)})});
+    cx.push({base:it.base,wb:normBase(it.base,it.stock),url:bn(it.sym),tags:stk(it),w:inWatch(normBase(it.base,it.stock)),it:it,px:px,dead:dead,ret:dead?it.deadRet:(px?(px/it.close-1)*100:it.ret)})});
   G.push({id:'tc',title:'金叉',rows:cx,cols:[TC0,
     {k:'st',l:'狀態',v:function(o){return o.dead?'<span class="rs bad">已死叉</span>':'<span class="rs good">新 A 級</span>'}},
     {k:'t',l:'金叉',s:function(o){return o.it.t},v:function(o){return tpe(o.it.t)}},
@@ -873,6 +883,35 @@ function load(){
     if(keepQ){F[TAB].q=keepQ;$('q').value=keepQ;body()}$('main').scrollTop=sc})
   .catch(function(e){$('main').innerHTML='<div class="empty">讀取失敗：'+esc(e.message)+'</div>'}).then(function(){$('reload').disabled=false})}
 document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.t===TAB);b.onclick=function(){TAB=b.dataset.t;document.querySelectorAll('#tabs button').forEach(function(x){x.classList.toggle('on',x===b)});try{localStorage.setItem('sm_tab',TAB)}catch(e){}draw()}});
+/* ---------- 代號旁的＋：直接加入自選（移除仍在自選分頁） ---------- */
+var TT=null,QPEND=null;
+function toast(html,cls,keep){var t=$('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
+  clearTimeout(TT);t.className='on '+(cls||'');t.innerHTML=html;if(!keep)TT=setTimeout(function(){t.className=''},3000);return t}
+function waBtns(sym){return [].slice.call(document.querySelectorAll('.wa')).filter(function(b){return b.dataset.wa===sym})}
+function restoreWa(sym){waBtns(sym).forEach(function(b){b.disabled=false;b.textContent='＋'})}
+function askPw(sym,note){QPEND=sym;
+  var t=toast('<span>'+(note?'<b class="dn">'+esc(note)+'</b>　':'')+'輸入密碼後加入 '+esc(sym)+'</span><input id="tpw" type="password" placeholder="密碼（只需一次）"><button class="btn pri" id="tpwok">確定</button><button class="lnk" id="tpwx">取消</button>','',true);
+  var i=$('tpw');try{i.focus()}catch(e){}
+  var close=function(){var s=QPEND;QPEND=null;t.className='';return s};
+  var go=function(){var v=i.value.trim();if(!v)return;PW=v;try{localStorage.setItem('sm_pw',PW)}catch(e){}var pc=$('pwcard');if(pc)pc.style.display='none';quickAdd(close())};
+  $('tpwok').onclick=go;
+  i.onkeydown=function(e){if(e.key==='Enter')go();if(e.key==='Escape')restoreWa(close())};
+  $('tpwx').onclick=function(){restoreWa(close())}}
+function quickAdd(sym){
+  if(!sym)return;
+  if(inWatch(sym)){waBtns(sym).forEach(function(b){b.outerHTML='<span class="tag">自選</span>'});return}
+  waBtns(sym).forEach(function(b){b.disabled=true;b.textContent='…'});
+  if(!PW){askPw(sym);return}
+  fetch('/api/watch',{method:'POST',headers:{'Content-Type':'application/json','x-password':PW},body:JSON.stringify({action:'add',symbol:sym})})
+  .then(function(r){return r.json().then(function(j){return {r:r,j:j}},function(){return {r:r,j:{}}})}).then(function(o){
+    if(o.r.status===401){PW='';try{localStorage.removeItem('sm_pw')}catch(e){}askPw(sym,'密碼錯誤');return}
+    if(!o.r.ok)throw new Error(o.j.error||('加入失敗（'+o.r.status+'）'));
+    D.watch=o.j.symbols||D.watch;VC[sym]=o.j.venues||VC[sym]||{};
+    waBtns(sym).forEach(function(b){b.outerHTML='<span class="tag">自選</span>'});tabs();
+    var vs=Object.keys(o.j.venues||{}).map(function(x){return VL[x]}).join('、');
+    toast(esc(sym)+' 已加入自選'+(vs?'（'+vs+'）':'')+'，下一個整點生效','ok')})
+  .catch(function(e){restoreWa(sym);toast(esc(e.message),'err')})}
+document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('.wa'):null;if(!b)return;e.preventDefault();e.stopPropagation();if(!b.disabled)quickAdd(b.dataset.wa)});
 document.addEventListener('keydown',function(e){var a=document.activeElement,tn=a&&a.tagName||'';if(e.key==='/'&&!/^(INPUT|SELECT|TEXTAREA)$/.test(tn)){var q=$('q');if(q){e.preventDefault();q.focus();q.select()}}});
 /* 手機沒有滑鼠停留：點掃流動性標記就在下方顯示細節，點其他地方關閉 */
 document.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest('.sw'),p=$('swpop');
