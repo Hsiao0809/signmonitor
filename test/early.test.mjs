@@ -145,8 +145,16 @@ test('盤中推算：近 24h 已漲過或跌過 1 倍日 ATR 的不推播，只�
   const a2 = E.pickEarly(ps, hs, [{ ...e[0], stats: st2 }], T, 30);
   assert.equal(a2.length, 1);
   assert.equal(a2[0].moved, undefined);
-  assert.match(E.earlyAlertText([...a2, ...a], T, 30), /另有 1 檔近 24h 已漲過或跌過/);
+  assert.match(E.earlyAlertText([...a2, ...a], T, 30), /另有 1 檔這根之前 24h 已漲過或跌過/);
   assert.equal(E.preContext(ps, T).earlyOf('okx:X-USDT-SWAP').min, 30);
   /* 第 45 分又是已漲過且量沒翻倍 → 不重複列 */
   assert.equal(E.pickEarly(ps, hs, e, T, 45).length, 0);
+});
+
+test('這根自己正在急拉的不算已漲過，照樣推播', () => {
+  const out = [];
+  for (let t = T - 10 * D; t < T; t += H) out.push({ t, o: 10, h: 10.1, l: 9.9, c: 10, qv: 1e5 });
+  const mv = E.moveOf(out, { t: T, o: 10, h: 12, l: 10, c: 12, qv: 3e5 });   /* 這根已經 +20% */
+  assert.ok(Math.abs(mv.chg24) < 1e-9);
+  assert.equal(E.movedOf(mv), null);
 });

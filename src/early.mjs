@@ -22,7 +22,7 @@ export const EARLY = {
   earlyKeepHours: 24,      // 盤中推算保留幾小時
   minMinutes: 10,          // 進行中的 K 至少走了幾分鐘才推算
   lastMinute: 48,          // 第 48 分之後不跑（整點的正式判斷馬上要開始）
-  /* 已經漲過／跌過：近 24 小時漲跌幅 ≥ 日 ATR × moveAtr 就不推播（網頁照列並標記） */
+  /* 已經漲過／跌過：這根之前 24 小時的漲跌幅 ≥ 日 ATR × moveAtr 就不推播（網頁照列並標記）；這根自己在拉的不算 */
   moveAtr: 1,
   atrDays: 7,              // 日 ATR 用近幾天（以 1H K 合成 24 小時區間）
   /* 2026-11 OKX 3 天實測：推算達正式門檻後，整根真的成為正式爆量的比例 */
@@ -127,13 +127,14 @@ export function pickEarly(pstate, hstate, entries, T, minute, cfg = HOURLY, ecfg
 }
 
 /**
- * 近 24 小時漲跌幅與日 ATR%：
- * 漲跌幅＝現價 ÷ 24 小時前那根 1H K 開盤；日 ATR 用 1H K 合成近 atrDays 個 24 小時區間的真實波幅平均
+ * 這根之前 24 小時的漲跌幅與日 ATR%：
+ * 漲跌幅＝這根 1H K 開盤 ÷ 24 小時前那根開盤（這根正在拉的不算，照樣通知）；
+ * 日 ATR 用 1H K 合成近 atrDays 個 24 小時區間的真實波幅平均
  */
 export function moveOf(bars, live, ecfg = EARLY) {
   const m = new Map(bars.map(b => [b.t, b]));
   const ref = m.get(live.t - 24 * H);
-  if (!ref || !(ref.o > 0) || !(live.c > 0)) return null;
+  if (!ref || !(ref.o > 0) || !(live.o > 0)) return null;
   const trs = [];
   for (let d = 0; d < ecfg.atrDays; d++) {
     const end = live.t - d * 24 * H, hs = [];
@@ -144,7 +145,7 @@ export function moveOf(bars, live, ecfg = EARLY) {
     if (c > 0) trs.push((hi - lo) / c * 100);
   }
   if (trs.length < 3) return null;
-  return { chg24: (live.c / ref.o - 1) * 100, atrp: trs.reduce((p, x) => p + x, 0) / trs.length };
+  return { chg24: (live.o / ref.o - 1) * 100, atrp: trs.reduce((p, x) => p + x, 0) / trs.length };
 }
 
 /** 推算用：已收盤的 1H K＋進行中那根，算出推算後的倍數，以及近 24 小時漲跌與日 ATR */
@@ -187,19 +188,19 @@ export function earlyAlertText(all, T, minute, url = '', ecfg = EARLY) {
   const L = [`【盤中推算】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間，第 ${minute} 分（${alerts.length} 檔；依已成交量推算整根）`];
   alerts.forEach(a => {
     L.push(`${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★推算 ${a.x1}x 同時段／${a.x2}x 近48h`);
-    L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（這根目前 ${pcs(a.chg)}${a.chg24 != null ? `，24h ${pcs(a.chg24)}／日ATR ${a.atrp}%` : ''}）｜已成交 ${money(a.qvNow)}，推算整根 ${money(a.qv)}`);
+    L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（這根目前 ${pcs(a.chg)}${a.chg24 != null ? `，前24h ${pcs(a.chg24)}／日ATR ${a.atrp}%` : ''}）｜已成交 ${money(a.qvNow)}，推算整根 ${money(a.qv)}`);
     L.push(`  ${othersLine(a)}`);
   });
   const p = ecfg.precision[minute];
   if (p) L.push(`第 ${minute} 分推算達標的，實測約 ${p}% 收盤後真的成為正式爆量（只有 OKX、Bitget）`);
-  if (skipped) L.push(`另有 ${skipped} 檔近 24h 已漲過或跌過（≥ ${ecfg.moveAtr} 倍日 ATR），不推播，只列在網頁`);
+  if (skipped) L.push(`另有 ${skipped} 檔這根之前 24h 已漲過或跌過（≥ ${ecfg.moveAtr} 倍日 ATR），不推播，只列在網頁`);
   if (url) L.push(url);
   return L.join('\n');
 }
 
 export function preMarkdown(pstate, { nowMs, warnings = [], note = '', rows = 120 }, cfg = HOURLY, ecfg = EARLY) {
   const L = [`# 盤中預警｜更新 ${tpe(nowMs)} 台灣時間`, ''];
-  L.push(`- **盤中推算**：每小時第 15、30、45 分，用進行中那根 1H K 的已成交量推算整根量，達正式爆量門檻（同時段 ${cfg.minSameHourX} 倍、近 48 小時 ${cfg.minRecentX} 倍、成交額下限）就推播。只有 OKX、Bitget。近 24 小時已漲過或跌過（≥ ${ecfg.moveAtr} 倍日 ATR）的標【已漲過】【已跌過】，不推播只列在這裡。`);
+  L.push(`- **盤中推算**：每小時第 15、30、45 分，用進行中那根 1H K 的已成交量推算整根量，達正式爆量門檻（同時段 ${cfg.minSameHourX} 倍、近 48 小時 ${cfg.minRecentX} 倍、成交額下限）就推播。只有 OKX、Bitget。這根之前 24 小時已漲過或跌過（≥ ${ecfg.moveAtr} 倍日 ATR）的標【已漲過】【已跌過】，不推播只列在這裡；這根自己正在拉的照樣推播。`);
   L.push(`- **預警**：整點收盤後，比前一根 ≥ ${cfg.pre.prevX} 倍或同時段 ≥ ${cfg.pre.sameX} 倍、但還沒到正式爆量。每小時一則摘要；同一家同一檔 ${ecfg.preDedupHours} 小時內只列一次。`);
   if (note) { L.push(''); L.push(note); }
   const early = pstate.early.slice(0, rows), pre = pstate.pre.slice(0, rows);
