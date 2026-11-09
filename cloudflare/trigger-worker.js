@@ -369,10 +369,10 @@ a{color:var(--acc)}
 /* 多模組重疊：只顯示約 5 檔的高度，其餘在區塊內捲動（電腦、手機都一樣） */
 .ovp>.pnl-b{max-height:290px;overflow-y:auto;overscroll-behavior:contain}
 /* ＋（加入自選）與「自選」標籤同寬，代號才對得齊；底部提示列 */
-.tag{display:inline-block;min-width:32px;text-align:center;box-sizing:border-box}
-.wa{font:inherit;font-size:13px;line-height:15px;min-width:32px;padding:0 4px;border-radius:4px;border:1px dashed var(--line);background:transparent;color:var(--mut);cursor:pointer}
+.wa{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;margin:0;flex:none;box-sizing:border-box;font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;border-radius:3px;border:1px solid var(--line);background:transparent;color:var(--mut);cursor:pointer}
 .wa:hover{color:var(--acc);border-color:var(--acc)}.wa:disabled{cursor:wait;opacity:.7}
-@media(max-width:900px){.wa{min-width:36px;min-height:26px}}
+.star{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;font-size:13px;line-height:1;color:#d6b25e}
+@media(max-width:900px){.wa,.star{width:20px;height:20px;font-size:13px}.star{font-size:15px}}
 #toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;display:none;align-items:center;flex-wrap:wrap;gap:8px;max-width:calc(100% - 24px);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.5)}
 #toast.on{display:flex}#toast.ok{color:var(--up)}#toast.err{color:var(--dn);border-color:var(--dn)}
 #toast input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);width:160px}
@@ -419,8 +419,8 @@ function tpe(ms){if(!ms)return '—';var p={};TF.formatToParts(new Date(ms)).for
 function md(ms){return new Date(ms).toISOString().slice(5,10)}
 function inWatch(b){return D&&D.watch&&D.watch.indexOf(b)>=0}
 /* 已在自選：顯示「自選」；不在：顯示＋（點一下加入） */
-function WA(b){return '<button class="wa" data-wa="'+esc(b)+'" title="加入自選" aria-label="把 '+esc(b)+' 加入自選">＋</button>'}
-function WT(b){return inWatch(b)?'<span class="tag">自選</span>':WA(b)}
+function WA(b){return '<button class="wa" data-wa="'+esc(b)+'" title="加入自選" aria-label="把 '+esc(b)+' 加入自選">+</button>'}
+function WT(b){return inWatch(b)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(b)}
 /* ---------- 掃流動性標記（只標記，沒有回測） ---------- */
 var SWK={spike:'爆量日',pd:'前日',swing:'波段'},SWX=1.5;
 function swOf(b){return D&&D.sweep?D.sweep.events.filter(function(e){return e.base===b}):[]}
@@ -485,7 +485,7 @@ function nearOf(c){var px=LP(c.ex,c.id),sd=F.short.side;if(px==null)return null;
   if(px>c.hi||px<c.lo)return 0;return Math.min((c.hi/px-1)*100,(1-c.lo/px)*100)}
 var COLS={
   hourly:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+(hW(a)?'<span class="tag">自選</span>':WA(a.base))+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(hW(a)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(a.base))+QT(a)+'</div>'}},
     {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
     {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
@@ -497,7 +497,7 @@ var COLS={
     {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'},
       tt:function(a){return Object.keys(a.others||{}).map(function(v){return VL[v]+' '+a.others[v]+'x'}).join('｜')||'其他家無此合約或資料不足'}}]},
   open:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+WT(p.base)+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span>'+(p.t1Hit?'<span class="badge">T1 ✓</span>':'')+otherFlags(p)+SWT(p.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+WT(p.base)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span>'+(p.t1Hit?'<span class="badge">T1 ✓</span>':'')+otherFlags(p)+SWT(p.base)+'</div>'}},
     {k:'px',l:'現價',n:1,v:function(p){return pxCell(p,LP(p.ex,p.id))}},
     {k:'r',l:'目前',n:1,s:function(p){return rNow(p,LP(p.ex,p.id))},v:function(p){return '<b>'+rr(rNow(p,LP(p.ex,p.id)))+'</b>'}},
     {k:'toStop',l:'距停損',n:1,dd:1,s:function(p){return toStop(p,LP(p.ex,p.id))},v:function(p){var d=toStop(p,LP(p.ex,p.id));return d==null?'—':'<span class="'+(d<2?'dn big':'')+'">'+d.toFixed(1)+'%</span>'}},
@@ -507,7 +507,7 @@ var COLS={
     {k:'mfe',l:'最大有利',n:1,m:1,s:function(p){return p.mfeR||0},v:function(p){return '+'+(p.mfeR||0).toFixed(1)+'R'}},
     {k:'trigT',l:'觸發',s:function(p){return p.trigT},v:function(p){return tpe(p.trigT)}}]},
   pend:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(c){return c.base},v:function(c){return '<div class="c0w">'+WT(c.base)+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+QT(c)+'<span class="cat">'+(PAT[c.pattern]||'')+'</span>'+SWT(c.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(c){return c.base},v:function(c){return '<div class="c0w">'+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+WT(c.base)+QT(c)+'<span class="cat">'+(PAT[c.pattern]||'')+'</span>'+SWT(c.base)+'</div>'}},
     {k:'vx',l:'爆量',n:1,s:function(c){return c.vx},v:function(c){return '<b>'+c.vx+'x</b>'}},
     {k:'dayT',l:'爆量日',s:function(c){return c.dayT},v:function(c){return md(c.dayT)+' '+pc100(c.chgDay)}},
     {k:'close',l:'日收',n:1,m:1,v:function(c){return fp(c.close)}},
@@ -520,7 +520,7 @@ var COLS={
       if(sd==='long')return '<b>多 '+a.toFixed(1)+'%</b>';if(sd==='short')return '<b>空 '+b.toFixed(1)+'%</b>';
       return '<span class="'+(a<=b?'big':'cat')+'">多 '+a.toFixed(1)+'%</span>　<span class="'+(b<a?'big':'cat')+'">空 '+b.toFixed(1)+'%</span>'}}]},
   layout:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+WT(it.base)+lLink(it)+CT(it.cat)+QT(it)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+SWT(it.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+lLink(it)+CT(it.cat)+WT(it.base)+QT(it)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+SWT(it.base)+'</div>'}},
     {k:'day',l:'爆量日',s:function(it){return it.day},v:function(it){return it.day.slice(5)}},
     {k:'age',l:'天數',n:1,s:function(it){return it.age||0},v:function(it){return it.age||0}},
     {k:'entry',l:'爆量日收',n:1,v:function(it){return fp(it.entry)}},
@@ -531,7 +531,7 @@ var COLS={
     {k:'mae',l:'最大回撤',n:1,dd:1,s:function(it){return it.mae},v:function(it){return pc(it.mae)}},
     {k:'vv',l:'各家倍數',w:1,m:1,v:function(it){return ['okx','bitget','bybit'].map(function(v){var q=it.venues&&it.venues[v];return q?(it.spiked.indexOf(v)>=0?'<b style="color:var(--fg)">'+VL[v]+' '+q.x+'x</b>':VL[v]+' '+q.x+'x'):VL[v]+' —'}).join('｜')}}]},
   crossA:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+WT(normBase(it.base,it.stock))+link(it.base,bn(it.sym))+stk(it)+(it.deadT?'<span class="badge" style="color:var(--dn)">已死叉 '+pc100(it.deadRet)+'</span>':'<span class="badge" style="color:var(--up)">仍成立</span>')+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+link(it.base,bn(it.sym))+stk(it)+WT(normBase(it.base,it.stock))+(it.deadT?'<span class="badge" style="color:var(--dn)">已死叉 '+pc100(it.deadRet)+'</span>':'<span class="badge" style="color:var(--up)">仍成立</span>')+'</div>'}},
     {k:'t',l:'金叉',s:function(it){return it.t},v:function(it){return tpe(it.t)}},
     {k:'close',l:'金叉收',n:1,v:function(it){return fp(it.close)}},
     {k:'px',l:'現價',n:1,v:function(it){return FP('binance',LP('binance',it.sym))}},
@@ -543,20 +543,20 @@ var COLS={
     {k:'stop',l:'近6根低',n:1,v:function(it){return fp(it.stopPx)+' <span class="cat">-'+(it.stopPct||0).toFixed(1)+'%</span>'}},
     {k:'bars',l:'根數',n:1,s:function(it){return it.bars||0},v:function(it){return (it.bars||0)+'/42'}}]},
   crossB:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+WT(normBase(it.base,it.stock))+link(it.base,bn(it.sym))+stk(it)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+link(it.base,bn(it.sym))+stk(it)+WT(normBase(it.base,it.stock))+'</div>'}},
     {k:'t',l:'金叉',s:function(it){return it.t},v:function(it){return tpe(it.t)}},
     {k:'close',l:'收',n:1,v:function(it){return fp(it.close)}},
     {k:'volx',l:'量',n:1,s:function(it){return it.volx},v:function(it){return it.volx==null?'—':it.volx+'x'}},
     {k:'px200',l:'距SMA200',n:1,s:function(it){return it.px200},v:function(it){return pc100(it.px200)}},
     {k:'why',l:'未達 A 級原因',w:1,v:function(it){return esc((it.reasons||[]).join('、'))}}]},
   shC:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+WT(p.base)+link(p.base,tv(p.ex,p.id,'240'))+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span></div>'}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+WT(p.base)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span></div>'}},
     {k:'r',l:'結果',n:1,s:function(p){return p.r},v:function(p){return '<b>'+rr(p.r)+'</b>'}},
     {k:'out',l:'出場',v:function(p){return OUT[p.outcome]||''}},
     {k:'px',l:'進場 → 出場',n:1,v:function(p){return fp(p.entry)+' → '+fp(p.exit)}},
     {k:'exitT',l:'出場時間',s:function(p){return p.exitT},v:function(p){return tpe(p.exitT)}}]},
   crC:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+WT(normBase(p.base,p.stock))+link(p.base,bn(p.sym))+stk(p)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,bn(p.sym))+stk(p)+WT(normBase(p.base,p.stock))+'</div>'}},
     {k:'ret',l:'結果',n:1,s:function(p){return p.exitRet},v:function(p){return '<b>'+pc100(p.exitRet)+'</b>'}},
     {k:'out',l:'出場',v:function(p){return p.deadT?'死叉出場':'滿 42 根'}},
     {k:'t',l:'金叉',s:function(p){return p.t},v:function(p){return tpe(p.t)}},
@@ -620,7 +620,7 @@ function item(reason,cls,name,url,extra,tags,notes){
 function layoutUrl(it){var sy=it.syms||{},v=['okx','bitget','bybit'].filter(function(k){return sy[k]})[0];return v?tv(v,sy[v],'D'):null}
 function kvs(o){return o.map(function(x){return '<div><span>'+x[0]+'</span>'+x[1]+'</div>'}).join('')}
 /* 需要處理：依類型分組，每組一張表、各自的欄位；沒有項目的組不顯示 */
-function tdName(o){return '<div class="c0w">'+(o.w?'<span class="tag">自選</span>':WA(o.wb||o.base))+link(o.base,o.url)+(o.tags||'')+'</div>'}
+function tdName(o){return '<div class="c0w">'+link(o.base,o.url)+(o.ct||'')+(o.w?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(o.wb||o.base))+(o.tags||'')+'</div>'}
 var TC0={k:'base',l:'代號',dd:1,s:function(o){return o.base},v:tdName};
 function sideB(s){return '<span class="badge '+(s==='long'?'bl':'bs')+'">'+SIDE[s]+'</span>'}
 function aft(o){return o.px&&o.ref?o.px/o.ref-1:null}
@@ -630,11 +630,11 @@ function todoGroups(){
   /* 量增價平：盤中 6 小時內（同一檔取倍數最高）、每日爆量取最新一天 */
   var q=[];
   if(hr){var qb={};hr.recent.forEach(function(a){if(a.quiet&&a.t>=now-6*3600e3&&(!qb[a.base]||a.x1>qb[a.base].x1))qb[a.base]=a});
-    Object.keys(qb).forEach(function(k){var a=qb[k];q.push({base:a.base,url:tv(a.venue,a.sym,'60'),tags:CT(a.cat),w:hW(a),src:'盤中・'+VL[a.venue],x:a.x1,t:a.t,tl:tpe(a.t),chg:a.chg,qlim:a.qlim,ref:a.price,ven:a.venue,px:LP(a.venue,a.sym)})})}
+    Object.keys(qb).forEach(function(k){var a=qb[k];q.push({base:a.base,url:tv(a.venue,a.sym,'60'),ct:CT(a.cat),tags:'',w:hW(a),src:'盤中・'+VL[a.venue],x:a.x1,t:a.t,tl:tpe(a.t),chg:a.chg,qlim:a.qlim,ref:a.price,ven:a.venue,px:LP(a.venue,a.sym)})})}
   if(sh&&sh.pending.length){var ld=Math.max.apply(null,sh.pending.map(function(c){return c.dayT}));
-    sh.pending.filter(function(c){return c.quiet&&c.dayT===ld}).forEach(function(c){q.push({base:c.base,url:tv(c.ex,c.id,'240'),tags:CT(c.cat),w:inWatch(c.base),src:'每日・短線',x:c.vx,t:c.dayT,tl:md(c.dayT),chg:c.chgDay,qlim:c.qlim,ref:c.close,ven:c.ex,px:LP(c.ex,c.id)})})}
+    sh.pending.filter(function(c){return c.quiet&&c.dayT===ld}).forEach(function(c){q.push({base:c.base,url:tv(c.ex,c.id,'240'),ct:CT(c.cat),tags:'',w:inWatch(c.base),src:'每日・短線',x:c.vx,t:c.dayT,tl:md(c.dayT),chg:c.chgDay,qlim:c.qlim,ref:c.close,ven:c.ex,px:LP(c.ex,c.id)})})}
   if(lay&&lay.lastDay)lay.active.filter(function(it){return it.quiet&&it.day===lay.lastDay}).forEach(function(it){
-    q.push({base:it.base,url:layoutUrl(it),tags:CT(it.cat),w:inWatch(it.base),src:'每日・布局',x:null,t:it.dayT,tl:it.day.slice(5),chg:it.chgDay,qlim:it.qlim,ref:it.entry,ven:lvLayout(it),px:lpLayout(it)})});
+    q.push({base:it.base,url:layoutUrl(it),ct:CT(it.cat),tags:'',w:inWatch(it.base),src:'每日・布局',x:null,t:it.dayT,tl:it.day.slice(5),chg:it.chgDay,qlim:it.qlim,ref:it.entry,ven:lvLayout(it),px:lpLayout(it)})});
   G.push({id:'tq',title:'量增價平',note:'爆量但價格還沒大動；盤中取 6 小時內、每日取最新一天',rows:q,cols:[TC0,
     {k:'src',l:'來源',v:function(o){return o.src}},
     {k:'x',l:'倍數',n:1,s:function(o){return o.x},v:function(o){return o.x==null?'—':'<b>'+o.x+'x</b>'}},
@@ -650,12 +650,12 @@ function todoGroups(){
       var px=LP(p.ex,p.id),r=rNow(p,px),why=null,cls='w';
       if(r!=null&&r<=-0.7){why='接近停損';cls='bad'}else if(r!=null&&r>=2.7){why='接近 T2';cls='good'}else if(r!=null&&r>=1.7&&!p.t1Hit){why='接近 T1';cls='good'}
       else if(p.trigT>=now-H8){why='新觸發'}
-      if(why)op.push({base:p.base,url:tv(p.ex,p.id,'240'),tags:CT(p.cat)+sideB(p.side)+otherFlags(p),w:inWatch(p.base),p:p,px:px,r:r,why:why,cls:cls})});
+      if(why)op.push({base:p.base,url:tv(p.ex,p.id,'240'),ct:CT(p.cat),tags:sideB(p.side)+otherFlags(p),w:inWatch(p.base),p:p,px:px,r:r,why:why,cls:cls})});
     sh.pending.forEach(function(c){
       var px=LP(c.ex,c.id);if(px==null)return;
       var side=px>c.hi?'long':px<c.lo?'short':null;if(!side)return;
       var tg=side==='long'?c.hi:c.lo;
-      xs.push({base:c.base,url:tv(c.ex,c.id,'240'),tags:CT(c.cat)+sideB(side),w:inWatch(c.base),c:c,px:px,tg:tg,over:Math.abs(px/tg-1)})})}
+      xs.push({base:c.base,url:tv(c.ex,c.id,'240'),ct:CT(c.cat),tags:sideB(side),w:inWatch(c.base),c:c,px:px,tg:tg,over:Math.abs(px/tg-1)})})}
   G.push({id:'to',title:'短線持倉',rows:op,cols:[TC0,
     {k:'why',l:'原因',dd:1,s:function(o){return WHY[o.why]},v:function(o){return '<span class="rs '+o.cls+'">'+o.why+'</span>'}},
     {k:'px',l:'現價',n:1,v:function(o){return pxCell(o.p,o.px)}},
@@ -673,7 +673,7 @@ function todoGroups(){
   var cx=[];
   if(cr)cr.active.forEach(function(it){var px=LP('binance',it.sym),dead=it.deadT&&it.deadT+144e5>=now-H8;
     if(!dead&&!(it.t+144e5>=now-H8))return;
-    cx.push({base:it.base,wb:normBase(it.base,it.stock),url:bn(it.sym),tags:stk(it),w:inWatch(normBase(it.base,it.stock)),it:it,px:px,dead:dead,ret:dead?it.deadRet:(px?(px/it.close-1)*100:it.ret)})});
+    cx.push({base:it.base,wb:normBase(it.base,it.stock),url:bn(it.sym),ct:stk(it),tags:'',w:inWatch(normBase(it.base,it.stock)),it:it,px:px,dead:dead,ret:dead?it.deadRet:(px?(px/it.close-1)*100:it.ret)})});
   G.push({id:'tc',title:'金叉',rows:cx,cols:[TC0,
     {k:'st',l:'狀態',v:function(o){return o.dead?'<span class="rs bad">已死叉</span>':'<span class="rs good">新 A 級</span>'}},
     {k:'t',l:'金叉',s:function(o){return o.it.t},v:function(o){return tpe(o.it.t)}},
@@ -688,7 +688,7 @@ function todoGroups(){
   if(hr){var best={};hr.recent.filter(function(a){return a.t>=now-5*3600e3}).forEach(function(a){if(!best[a.base]||a.x1>best[a.base].x1)best[a.base]=a});
     var uniq=Object.keys(best).map(function(k){return best[k]}).sort(function(a,b){return b.x1-a.x1}),top=uniq.slice(0,5);
     uniq.forEach(function(a){if(hW(a)&&top.indexOf(a)<0)top.push(a)});
-    top.forEach(function(a){hx.push({base:a.base,url:tv(a.venue,a.sym,'60'),tags:CT(a.cat),w:hW(a),a:a,ref:a.price,px:LP(a.venue,a.sym)})})}
+    top.forEach(function(a){hx.push({base:a.base,url:tv(a.venue,a.sym,'60'),ct:CT(a.cat),tags:'',w:hW(a),a:a,ref:a.price,px:LP(a.venue,a.sym)})})}
   G.push({id:'th',title:'盤中爆量',note:'5 小時內倍數前 5 名＋自選',rows:hx,cols:[TC0,
     {k:'x',l:'倍數',n:1,s:function(o){return o.a.x1},v:function(o){return '<b>'+o.a.x1+'x</b>'}},
     {k:'t',l:'時間',s:function(o){return o.a.t},v:function(o){return tpe(o.a.t)}},
@@ -699,7 +699,7 @@ function todoGroups(){
   /* 新進布局：最新一天 */
   var lx=[];
   if(lay&&lay.lastDay)lay.active.filter(function(it){return it.day===lay.lastDay}).forEach(function(it){
-    lx.push({base:it.base,url:layoutUrl(it),tags:CT(it.cat),w:inWatch(it.base),it:it,ref:it.entry,px:lpLayout(it)})});
+    lx.push({base:it.base,url:layoutUrl(it),ct:CT(it.cat),tags:'',w:inWatch(it.base),it:it,ref:it.entry,px:lpLayout(it)})});
   G.push({id:'tl',title:'新進布局',note:lay&&lay.lastDay?'資料日 '+lay.lastDay:'',rows:lx,cols:[TC0,
     {k:'ven',l:'交易所',v:function(o){return '<span class="badge">'+kindL(o.it)+'</span>'}},
     {k:'ref',l:'爆量日收',n:1,v:function(o){return fp(o.ref)}},
@@ -757,7 +757,7 @@ function home(){
   var t=todo(),o=overlap();
   var left=panel('需要處理 <small>'+t.length+'</small>',todoTables(),'grow');
   var ov=o.length?'<div class="card">'+o.map(function(x){
-    return '<div class="ov"><div class="l1">'+WT(x.b)+'<span class="sym">'+esc(x.b)+'</span><span class="cat">'+x.n+' 個模組</span></div><div class="chips">'+
+    return '<div class="ov"><div class="l1"><span class="sym">'+esc(x.b)+'</span>'+WT(x.b)+'<span class="cat">'+x.n+' 個模組</span></div><div class="chips">'+
       MODS.filter(function(k){return x.m[k[0]]}).map(function(k){return '<span class="badge">'+k[1]+' '+esc(x.m[k[0]])+'</span>'}).join('')+'</div></div>'}).join('')+'</div>':'<div class="card empty">無</div>';
   var right=panel('大盤',marketCard(),'fix')+panel('量增價平成績',quietCard(),'fix')+panel('多模組重疊 <small>'+o.length+' 檔同時出現在 2 個以上模組</small>',ov,'ovp')+panel('系統狀態',status(),'fix');
   return (sysBad()?'<div class="card alert" style="flex:none">系統有異常（更新延遲、執行失敗或資料警告），詳見「系統狀態」</div>':'')+'<div class="home"><div class="vs">'+right+'</div><div class="vs todo">'+left+'</div></div>'}
@@ -888,7 +888,7 @@ var TT=null,QPEND=null;
 function toast(html,cls,keep){var t=$('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
   clearTimeout(TT);t.className='on '+(cls||'');t.innerHTML=html;if(!keep)TT=setTimeout(function(){t.className=''},3000);return t}
 function waBtns(sym){return [].slice.call(document.querySelectorAll('.wa')).filter(function(b){return b.dataset.wa===sym})}
-function restoreWa(sym){waBtns(sym).forEach(function(b){b.disabled=false;b.textContent='＋'})}
+function restoreWa(sym){waBtns(sym).forEach(function(b){b.disabled=false;b.textContent='+'})}
 function askPw(sym,note){QPEND=sym;
   var t=toast('<span>'+(note?'<b class="dn">'+esc(note)+'</b>　':'')+'輸入密碼後加入 '+esc(sym)+'</span><input id="tpw" type="password" placeholder="密碼（只需一次）"><button class="btn pri" id="tpwok">確定</button><button class="lnk" id="tpwx">取消</button>','',true);
   var i=$('tpw');try{i.focus()}catch(e){}
@@ -899,7 +899,7 @@ function askPw(sym,note){QPEND=sym;
   $('tpwx').onclick=function(){restoreWa(close())}}
 function quickAdd(sym){
   if(!sym)return;
-  if(inWatch(sym)){waBtns(sym).forEach(function(b){b.outerHTML='<span class="tag">自選</span>'});return}
+  if(inWatch(sym)){waBtns(sym).forEach(function(b){b.outerHTML='<span class="star" title="已在自選" aria-label="已在自選">★</span>'});return}
   waBtns(sym).forEach(function(b){b.disabled=true;b.textContent='…'});
   if(!PW){askPw(sym);return}
   fetch('/api/watch',{method:'POST',headers:{'Content-Type':'application/json','x-password':PW},body:JSON.stringify({action:'add',symbol:sym})})
@@ -907,7 +907,7 @@ function quickAdd(sym){
     if(o.r.status===401){PW='';try{localStorage.removeItem('sm_pw')}catch(e){}askPw(sym,'密碼錯誤');return}
     if(!o.r.ok)throw new Error(o.j.error||('加入失敗（'+o.r.status+'）'));
     D.watch=o.j.symbols||D.watch;VC[sym]=o.j.venues||VC[sym]||{};
-    waBtns(sym).forEach(function(b){b.outerHTML='<span class="tag">自選</span>'});tabs();
+    waBtns(sym).forEach(function(b){b.outerHTML='<span class="star" title="已在自選" aria-label="已在自選">★</span>'});tabs();
     var vs=Object.keys(o.j.venues||{}).map(function(x){return VL[x]}).join('、');
     toast(esc(sym)+' 已加入自選'+(vs?'（'+vs+'）':'')+'，下一個整點生效','ok')})
   .catch(function(e){restoreWa(sym);toast(esc(e.message),'err')})}
