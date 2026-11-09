@@ -485,7 +485,7 @@ function nearOf(c){var px=LP(c.ex,c.id),sd=F.short.side;if(px==null)return null;
   if(px>c.hi||px<c.lo)return 0;return Math.min((c.hi/px-1)*100,(1-c.lo/px)*100)}
 var COLS={
   hourly:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(hW(a)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(a.base))+QT(a)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+(hW(a)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(a.base))+'</div>'}},
     {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
     {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
@@ -497,7 +497,7 @@ var COLS={
     {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'},
       tt:function(a){return Object.keys(a.others||{}).map(function(v){return VL[v]+' '+a.others[v]+'x'}).join('｜')||'其他家無此合約或資料不足'}}]},
   open:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+WT(p.base)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span>'+(p.t1Hit?'<span class="badge">T1 ✓</span>':'')+otherFlags(p)+SWT(p.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span>'+(p.t1Hit?'<span class="badge">T1 ✓</span>':'')+otherFlags(p)+SWT(p.base)+WT(p.base)+'</div>'}},
     {k:'px',l:'現價',n:1,v:function(p){return pxCell(p,LP(p.ex,p.id))}},
     {k:'r',l:'目前',n:1,s:function(p){return rNow(p,LP(p.ex,p.id))},v:function(p){return '<b>'+rr(rNow(p,LP(p.ex,p.id)))+'</b>'}},
     {k:'toStop',l:'距停損',n:1,dd:1,s:function(p){return toStop(p,LP(p.ex,p.id))},v:function(p){var d=toStop(p,LP(p.ex,p.id));return d==null?'—':'<span class="'+(d<2?'dn big':'')+'">'+d.toFixed(1)+'%</span>'}},
@@ -507,7 +507,7 @@ var COLS={
     {k:'mfe',l:'最大有利',n:1,m:1,s:function(p){return p.mfeR||0},v:function(p){return '+'+(p.mfeR||0).toFixed(1)+'R'}},
     {k:'trigT',l:'觸發',s:function(p){return p.trigT},v:function(p){return tpe(p.trigT)}}]},
   pend:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(c){return c.base},v:function(c){return '<div class="c0w">'+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+WT(c.base)+QT(c)+'<span class="cat">'+(PAT[c.pattern]||'')+'</span>'+SWT(c.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(c){return c.base},v:function(c){return '<div class="c0w">'+link(c.base,tv(c.ex,c.id,'240'))+CT(c.cat)+QT(c)+'<span class="cat">'+(PAT[c.pattern]||'')+'</span>'+SWT(c.base)+WT(c.base)+'</div>'}},
     {k:'vx',l:'爆量',n:1,s:function(c){return c.vx},v:function(c){return '<b>'+c.vx+'x</b>'}},
     {k:'dayT',l:'爆量日',s:function(c){return c.dayT},v:function(c){return md(c.dayT)+' '+pc100(c.chgDay)}},
     {k:'close',l:'日收',n:1,m:1,v:function(c){return fp(c.close)}},
@@ -520,7 +520,7 @@ var COLS={
       if(sd==='long')return '<b>多 '+a.toFixed(1)+'%</b>';if(sd==='short')return '<b>空 '+b.toFixed(1)+'%</b>';
       return '<span class="'+(a<=b?'big':'cat')+'">多 '+a.toFixed(1)+'%</span>　<span class="'+(b<a?'big':'cat')+'">空 '+b.toFixed(1)+'%</span>'}}]},
   layout:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+lLink(it)+CT(it.cat)+WT(it.base)+QT(it)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+SWT(it.base)+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+lLink(it)+CT(it.cat)+QT(it)+'<span class="badge">'+kindL(it)+'</span>'+(it.respikes?'<span class="cat">再爆量 '+it.respikes+'</span>':'')+SWT(it.base)+WT(it.base)+'</div>'}},
     {k:'day',l:'爆量日',s:function(it){return it.day},v:function(it){return it.day.slice(5)}},
     {k:'age',l:'天數',n:1,s:function(it){return it.age||0},v:function(it){return it.age||0}},
     {k:'entry',l:'爆量日收',n:1,v:function(it){return fp(it.entry)}},
@@ -531,7 +531,7 @@ var COLS={
     {k:'mae',l:'最大回撤',n:1,dd:1,s:function(it){return it.mae},v:function(it){return pc(it.mae)}},
     {k:'vv',l:'各家倍數',w:1,m:1,v:function(it){return ['okx','bitget','bybit'].map(function(v){var q=it.venues&&it.venues[v];return q?(it.spiked.indexOf(v)>=0?'<b style="color:var(--fg)">'+VL[v]+' '+q.x+'x</b>':VL[v]+' '+q.x+'x'):VL[v]+' —'}).join('｜')}}]},
   crossA:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+link(it.base,bn(it.sym))+stk(it)+WT(normBase(it.base,it.stock))+(it.deadT?'<span class="badge" style="color:var(--dn)">已死叉 '+pc100(it.deadRet)+'</span>':'<span class="badge" style="color:var(--up)">仍成立</span>')+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(it){return it.base},v:function(it){return '<div class="c0w">'+link(it.base,bn(it.sym))+stk(it)+(it.deadT?'<span class="badge" style="color:var(--dn)">已死叉 '+pc100(it.deadRet)+'</span>':'<span class="badge" style="color:var(--up)">仍成立</span>')+WT(normBase(it.base,it.stock))+'</div>'}},
     {k:'t',l:'金叉',s:function(it){return it.t},v:function(it){return tpe(it.t)}},
     {k:'close',l:'金叉收',n:1,v:function(it){return fp(it.close)}},
     {k:'px',l:'現價',n:1,v:function(it){return FP('binance',LP('binance',it.sym))}},
@@ -550,7 +550,7 @@ var COLS={
     {k:'px200',l:'距SMA200',n:1,s:function(it){return it.px200},v:function(it){return pc100(it.px200)}},
     {k:'why',l:'未達 A 級原因',w:1,v:function(it){return esc((it.reasons||[]).join('、'))}}]},
   shC:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+WT(p.base)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span></div>'}},
+    {k:'base',l:'代號',dd:1,s:function(p){return p.base},v:function(p){return '<div class="c0w">'+link(p.base,tv(p.ex,p.id,'240'))+CT(p.cat)+'<span class="badge '+(p.side==='long'?'bl':'bs')+'">'+SIDE[p.side]+'</span>'+WT(p.base)+'</div>'}},
     {k:'r',l:'結果',n:1,s:function(p){return p.r},v:function(p){return '<b>'+rr(p.r)+'</b>'}},
     {k:'out',l:'出場',v:function(p){return OUT[p.outcome]||''}},
     {k:'px',l:'進場 → 出場',n:1,v:function(p){return fp(p.entry)+' → '+fp(p.exit)}},
@@ -620,7 +620,7 @@ function item(reason,cls,name,url,extra,tags,notes){
 function layoutUrl(it){var sy=it.syms||{},v=['okx','bitget','bybit'].filter(function(k){return sy[k]})[0];return v?tv(v,sy[v],'D'):null}
 function kvs(o){return o.map(function(x){return '<div><span>'+x[0]+'</span>'+x[1]+'</div>'}).join('')}
 /* 需要處理：依類型分組，每組一張表、各自的欄位；沒有項目的組不顯示 */
-function tdName(o){return '<div class="c0w">'+link(o.base,o.url)+(o.ct||'')+(o.w?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(o.wb||o.base))+(o.tags||'')+'</div>'}
+function tdName(o){return '<div class="c0w">'+link(o.base,o.url)+(o.ct||'')+(o.tags||'')+(o.w?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(o.wb||o.base))+'</div>'}
 var TC0={k:'base',l:'代號',dd:1,s:function(o){return o.base},v:tdName};
 function sideB(s){return '<span class="badge '+(s==='long'?'bl':'bs')+'">'+SIDE[s]+'</span>'}
 function aft(o){return o.px&&o.ref?o.px/o.ref-1:null}
@@ -757,7 +757,7 @@ function home(){
   var t=todo(),o=overlap();
   var left=panel('需要處理 <small>'+t.length+'</small>',todoTables(),'grow');
   var ov=o.length?'<div class="card">'+o.map(function(x){
-    return '<div class="ov"><div class="l1"><span class="sym">'+esc(x.b)+'</span>'+WT(x.b)+'<span class="cat">'+x.n+' 個模組</span></div><div class="chips">'+
+    return '<div class="ov"><div class="l1"><span class="sym">'+esc(x.b)+'</span><span class="cat">'+x.n+' 個模組</span>'+WT(x.b)+'</div><div class="chips">'+
       MODS.filter(function(k){return x.m[k[0]]}).map(function(k){return '<span class="badge">'+k[1]+' '+esc(x.m[k[0]])+'</span>'}).join('')+'</div></div>'}).join('')+'</div>':'<div class="card empty">無</div>';
   var right=panel('大盤',marketCard(),'fix')+panel('量增價平成績',quietCard(),'fix')+panel('多模組重疊 <small>'+o.length+' 檔同時出現在 2 個以上模組</small>',ov,'ovp')+panel('系統狀態',status(),'fix');
   return (sysBad()?'<div class="card alert" style="flex:none">系統有異常（更新延遲、執行失敗或資料警告），詳見「系統狀態」</div>':'')+'<div class="home"><div class="vs">'+right+'</div><div class="vs todo">'+left+'</div></div>'}
