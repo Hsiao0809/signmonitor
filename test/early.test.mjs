@@ -69,7 +69,7 @@ test('正式爆量註明幾小時前預警、第幾分已推算', () => {
 
 test('盤中推算：用已成交量換算整根，達正式門檻才通知；同一小時不重複', () => {
   const b = bars();
-  const live = { t: T, o: 10, h: 10.5, l: 10, c: 10.4, qv: 2.5e5 };          /* 15 分鐘就 2.5e5 → 整根 1e6 */
+  const live = { t: T, o: 10, h: 10.2, l: 10, c: 10.1, qv: 2.5e5 };   /* 24h 只漲 1%，不算已漲過 */          /* 15 分鐘就 2.5e5 → 整根 1e6 */
   const st = E.earlyStats(b.filter(x => x.t < T), live, T + 15 * 60e3, 'crypto');
   assert.ok(Math.abs(st.qv - 1e6) < 1);
   assert.ok(st.x1 >= 9.9 && st.x2 >= 9.9);
@@ -118,4 +118,35 @@ test('連續放量發生在每天固定放量的時段 → 加【時段性】', 
   const a = HR.pickAlerts(HR.emptyHourly(), [{ venue: 'okx', sym: 'X-USDT-SWAP', base: 'X', cat: 'crypto', stats: st }], T);
   assert.equal(a[0].season, true);
   assert.match(HR.hourlyAlertText(a, T), /【時段性】/);
+});
+
+test('盤中推算：近 24h 已漲過或跌過 1 倍日 ATR 的不推播，只標記', () => {
+  /* 平常每小時高低 ±1%（日 ATR 約 2% 多），最近 24 小時從 10 漲到 11 */
+  const out = [];
+  for (let t = T - 10 * D; t < T; t += H) {
+    const c = t >= T - D ? 10 + (t - (T - D)) / D : 10;
+    out.push({ t, o: c, h: c * 1.01, l: c * 0.99, c, qv: 1e5 });
+  }
+  const live = { t: T, o: 11, h: 11, l: 11, c: 11, qv: 2.5e5 };
+  const st = E.earlyStats(out, live, T + 15 * 60e3, 'crypto');
+  assert.ok(st.move.chg24 > 9 && st.move.atrp > 1.5 && st.move.atrp < 8);
+  assert.equal(E.movedOf(st.move), 'up');
+  assert.equal(E.movedOf({ chg24: -6, atrp: 5 }), 'down');
+  assert.equal(E.movedOf({ chg24: 3, atrp: 5 }), null);
+  assert.equal(E.movedOf(null), null);                                     /* 資料不足照常推播 */
+  const ps = E.emptyPre(), hs = HR.emptyHourly();
+  const e = [{ venue: 'okx', sym: 'X-USDT-SWAP', base: 'X', cat: 'crypto', stats: st }];
+  const a = E.pickEarly(ps, hs, e, T, 15);
+  assert.equal(a[0].moved, 'up');
+  assert.equal(E.earlyAlertText(a, T, 15), '');                            /* 全部已漲過 → 不發 */
+  assert.equal(E.preContext(ps, T).earlyOf('okx:X-USDT-SWAP'), null);      /* 正式爆量不註明已推算 */
+  /* 第 30 分價格回到原點（剛開始動）→ 照常推播 */
+  const st2 = { ...st, move: { chg24: 0.5, atrp: 3 } };
+  const a2 = E.pickEarly(ps, hs, [{ ...e[0], stats: st2 }], T, 30);
+  assert.equal(a2.length, 1);
+  assert.equal(a2[0].moved, undefined);
+  assert.match(E.earlyAlertText([...a2, ...a], T, 30), /另有 1 檔近 24h 已漲過或跌過/);
+  assert.equal(E.preContext(ps, T).earlyOf('okx:X-USDT-SWAP').min, 30);
+  /* 第 45 分又是已漲過且量沒翻倍 → 不重複列 */
+  assert.equal(E.pickEarly(ps, hs, e, T, 45).length, 0);
 });

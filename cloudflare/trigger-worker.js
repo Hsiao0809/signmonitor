@@ -574,12 +574,13 @@ var COLS={
 COLS.wh=COLS.hourly;
 /* 盤中推算（第 15／30／45 分）與預警（整點，還沒到正式爆量） */
 COLS.early=function(){return [
-  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
+  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.moved?'<span class="cat" title="近 24h '+(a.chg24>=0?'+':'')+a.chg24+'%，日 ATR '+a.atrp+'%；不推播">'+(a.moved==='up'?'已漲過':'已跌過')+'</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
   {k:'t',l:'時間',s:function(a){return a.t+a.min*60e3},v:function(a){return tpe(a.t)+' <span class="cat">第'+a.min+'分</span>'}},
   {k:'x1',l:'推算同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
   {k:'x2',l:'推算近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
   {k:'qvNow',l:'已成交',n:1,s:function(a){return a.qvNow},v:function(a){return money(a.qvNow||0)}},
   {k:'chg',l:'當時',n:1,s:function(a){return a.chg},v:function(a){return pc100(a.chg)}},
+  {k:'chg24',l:'24h／ATR',n:1,s:function(a){return a.chg24!=null&&a.atrp?a.chg24/a.atrp:null},v:function(a){return a.chg24==null?'—':pc100(a.chg24)+' <span class="cat">'+a.atrp+'%</span>'}},
   {k:'px',l:'現價',n:1,v:function(a){return FP(a.venue,LP(a.venue,a.sym))}},
   {k:'aft',l:'之後',n:1,s:function(a){var p=LP(a.venue,a.sym);return p&&a.price?p/a.price-1:null},v:function(a){var p=LP(a.venue,a.sym);return p&&a.price?pc(p/a.price-1):'—'}},
   {k:'ven',l:'交易所',dd:1,s:function(a){return a.venue},v:function(a){return '<span class="badge">'+kindH(a)+'</span>'}}]};
@@ -799,7 +800,7 @@ function hourly(){
   var list=h.recent.filter(function(a){return a.t>=ref-w&&a.x1>=mx&&pass(f,{base:a.base,cat:a.cat,vens:[a.venue],watch:hW(a),single:a.single,quiet:a.quiet})});
   var P=D.pre,ok=function(a){return a.x1>=mx&&pass(f,{base:a.base,cat:a.cat,vens:[a.venue],watch:hW(a),single:a.single,quiet:a.quiet})};
   if(f.pane==='early'){var el=P?P.early.filter(function(a){return a.t>=Date.now()-w&&ok(a)}):[];CNT=[el.length,P?P.early.length:0];
-    return '<div class="vs"><div class="meta">每小時第 15、30、45 分，用進行中那根 1H K 的已成交量推算整根，達正式爆量門檻就推播；只有 OKX、Bitget，保留 24 小時。最近一次：'+(P&&P.lastSlot?tpe(+P.lastSlot.split(':')[0])+' 第 '+P.lastSlot.split(':')[1]+' 分':'—')+'。實測第 15 分約 5 成、30 分約 7 成、45 分約 8 成收盤後真的成為正式爆量。</div>'+panel('',table('early',el,COLS.early(),P?'無':'還沒有盤中推算資料'),'grow')+'</div>'}
+    return '<div class="vs"><div class="meta">每小時第 15、30、45 分，用進行中那根 1H K 的已成交量推算整根，達正式爆量門檻就推播；近 24h 已漲過或跌過（≥ 1 倍日 ATR）的只列在這裡、不推播。只有 OKX、Bitget，保留 24 小時。最近一次：'+(P&&P.lastSlot?tpe(+P.lastSlot.split(':')[0])+' 第 '+P.lastSlot.split(':')[1]+' 分':'—')+'。實測第 15 分約 5 成、30 分約 7 成、45 分約 8 成收盤後真的成為正式爆量。</div>'+panel('',table('early',el,COLS.early(),P?'無':'還沒有盤中推算資料'),'grow')+'</div>'}
   if(f.pane==='pre'){var pl=P?P.pre.filter(function(a){return a.t>=Date.now()-w&&ok(a)}):[];CNT=[pl.length,P?P.pre.length:0];
     return '<div class="vs"><div class="meta">整點收盤後，比前一根 ≥2x 或同時段 ≥2x、但還沒到正式爆量；同一檔 6 小時內只列一次，保留 12 小時。約 3 成正式爆量在前 1 小時會先出現預警，沒升級的多半是雜訊。</div>'+panel('',table('pre',pl,COLS.pre(),P?'無':'還沒有預警資料'),'grow')+'</div>'}
   CNT=[list.length,h.recent.length];

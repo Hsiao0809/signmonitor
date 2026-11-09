@@ -55,9 +55,10 @@ async function main() {
   const cnt = v => entries.filter(e => e.venue === v).length;
   const note = `最近一次盤中推算：${tpe(T)}–${tpe(T + H).slice(11)} 台灣時間這根 1H K 第 ${minute} 分；OKX ${cnt('okx')} 檔、Bitget ${cnt('bitget')} 檔，本輪 ${alerts.length} 檔`;
   fs.writeFileSync(path.join(outDir, 'pre-body.md'), E.preBody(pstate, { nowMs, warnings, note }, t => render(t, 'md')));
-  const msg = E.earlyAlertText(HR.mergeByBase(alerts), T, minute, a['pre-url'] || '');
+  const pushed = alerts.filter(x => !x.moved);
+  const msg = E.earlyAlertText([...HR.mergeByBase(pushed), ...alerts.filter(x => x.moved)], T, minute, a['pre-url'] || '');
   if (msg) fs.writeFileSync(path.join(outDir, 'telegram-1.txt'), render(msg, 'html'));
-  console.log(`intrahour=${tpe(T)}+${minute}m entries=${entries.length} alerts=${alerts.length}`);
+  console.log(`intrahour=${tpe(T)}+${minute}m entries=${entries.length} alerts=${alerts.length} pushed=${pushed.length}`);
   warnings.forEach(w => console.log('warning:', w));
 }
 
