@@ -1,0 +1,71 @@
+name: Telegram backfill
+
+# 一次性：用 logs/telegram/ 的發送紀錄，把最近一段時間的通知依類型重發到群組對應的話題。
+# 先決條件：已成功執行「Telegram topics」（config/telegram-topics.json 存在）。
+# 靜音發送、每則標原本的台灣時間；話題建好之後新發的通知已直接進話題，所以只補那之前的。
+# 補發完會寫 config/telegram-backfill.json，之後再跑會拒絕（勾 force 才重跑）。
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 補發最近幾小時
+        type: string
+        default: "24"
+      dry_run:
+        description: 只列出會補發什麼、不發送
+        type: boolean
+        default: false
+      force:
+        description: 已經補發過仍要再補發
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# 不跟 Monitor 共用排程群組：補發要花十幾分鐘，不能擋住每小時監控
+concurrency:
+  group: telegram-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Backfill
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HOURS: ${{ inputs.hours }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ ! -f config/telegram-topics.json ]; then echo "還沒有 config/telegram-topics.json，先執行 Telegram topics"; exit 1; fi
+          # 話題設定檔最後一次變動的時間：這之後新發的通知已經直接進話題，不補
+          CUTOFF=$(git log -1 --format=%cI -- config/telegram-topics.json)
+          echo "cutoff=$CUTOFF"
+          ARGS="--hours $HOURS --cutoff $CUTOFF"
+          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ "$FORCE" = "true" ]; then ARGS="$ARGS --force"; fi
+          node src/telegram-backfill.mjs $ARGS
+      - name: Save marker
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          if [ ! -f config/telegram-backfill.json ]; then echo "沒有標記檔可存"; exit 0; fi
+          git add config/telegram-backfill.json
+          if git diff --cached --quiet; then echo "標記檔沒有變動"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "config: Telegram 補發完成標記"
+          for i in 1 2 3; do
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep 5
+          done
+          exit 1

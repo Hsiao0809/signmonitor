@@ -290,6 +290,16 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 **不會漏發**：話題被刪或代號填錯時，該則自動改送 General（發送紀錄會標 `fellBack`，Actions 日誌也會提示）；HTML 格式被拒時改用純文字，仍送進同一個話題。發送紀錄 `logs/telegram/` 多一個 `topic` 欄位（類型），不含代號與 chat id。
 
+### 補發舊通知到話題
+
+Telegram 沒辦法搬動已發出的訊息，所以用發送紀錄 `logs/telegram/` 重發一份：Actions → 「Telegram backfill」→ Run workflow。
+
+- `hours`：補發最近幾小時，預設 24；`dry_run` 勾起來只列出會補發什麼、不發送（建議先看一次）。
+- 先決條件：已成功執行 Telegram topics。話題設定檔 commit 之後新發的通知已直接進話題，不會重複補發。
+- 依區塊標題判斷類型（盤中推算／預警→盤中預警，盤中爆量，量增價平，觸發／T1／結算→狀態變化，金叉，每日報告等）；紀錄有 `topic` 欄位的直接用該類型；被切段的後半承接前一則的類型。
+- 靜音發送（不會震動）、每則前面標「【補發 月-日 時:分 台灣時間】」，紀錄是純文字所以沒有 TradingView 連結；限速約每 3.3 秒一則，遇到 429 會等 Telegram 指定的時間再試。
+- 補發完寫 `config/telegram-backfill.json`；再跑會拒絕，勾 `force` 才重跑。中途失敗不寫標記，訊息會說已補發幾則。
+
 ## 存放位置
 
 - Issue「短線清單」「布局清單」「盤中爆量」「盤中預警」「沉睡甦醒」「借幣利率」「金叉清單」「金叉清單（日線）」「行情快照」「自選標的」：本文是最新清單與成績，狀態以壓縮形式存在本文最後的隱藏註解，不要手動刪除。每日報告與狀態變化留在留言。
@@ -312,7 +322,7 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 | `src/quiet.mjs` | 量增價平（標記、通知、24h／72h 成績） |
 | `src/snapshot.mjs` | 行情快照（給網頁：BTC／ETH 4H 狀態、Binance／Bitget 價格） |
 | `src/venues.mjs` | OKX、Bitget、Bybit 日線／1H 轉接器、Bybit WebSocket |
-| `src/telegram-topics.mjs`、`src/notify.mjs`、`src/setup-topics.mjs` | Telegram 話題分流、發送、一次性建立話題 |
+| `src/telegram-topics.mjs`、`src/notify.mjs`、`src/setup-topics.mjs`、`src/telegram-backfill.mjs` | Telegram 話題分流、發送、一次性建立話題、補發舊通知 |
 | `src/run.mjs` | 每輪執行入口 |
 | `src/notify.mjs` | Telegram 通知 |
 | `src/probe.mjs` | 連線檢查：`node src/probe.mjs` |
