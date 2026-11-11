@@ -6,6 +6,7 @@ name: Monitor
 # - 短線清單：補處理所有新收盤的 4H K（觸發、T1、停損、T2、逾時）
 # - 4H 金叉：Binance 現貨，每根 4H K 收盤後（台灣 00、04、08、12、16、20 點）判斷一次
 # - 掃流動性：短線／布局／自選標的，每根 4H K 收盤後標記一次（只在網頁，不推播）
+# - 借幣利率：OKX 各幣槓桿借幣利率比 7 天中位數暴增就推播（每小時一次）
 # - 每日掃描：台灣時間 09:00 後當天第一輪（布局清單等 Bybit 成交檔 09:12 公布後才跑）
 # GitHub 排程可能延遲或略過：晚於整點才啟動時改評估上一小時（Bybit 該小時會缺），
 # 每日掃描與 4H 追蹤則由下一輪自動補上。
@@ -92,6 +93,7 @@ jobs:
             await ensure("量增價平", "quiet-body.md", "quiet_");
             await ensure("盤中預警", "pre-body.md", "pre_");
             await ensure("沉睡甦醒", "dormant-body.md", "dormant_");
+            await ensure("借幣利率", "rate-body.md", "rate_");
 
       - name: Restore Bybit daily cache
         if: ${{ inputs.mode != 'intrahour' }}
@@ -109,6 +111,14 @@ jobs:
           key: dormant-${{ github.run_id }}
           restore-keys: dormant-
 
+      - name: Restore rate cache
+        if: ${{ inputs.mode != 'intrahour' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/rates.json
+          key: rates-${{ github.run_id }}
+          restore-keys: rates-
+
       - name: Run monitor
         if: ${{ inputs.mode != 'intrahour' }}
         env:
@@ -120,11 +130,12 @@ jobs:
           QUIET_URL: ${{ steps.issue.outputs.quiet_url }}
           PRE_URL: ${{ steps.issue.outputs.pre_url }}
           DORMANT_URL: ${{ steps.issue.outputs.dormant_url }}
+          RATE_URL: ${{ steps.issue.outputs.rate_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md --dormant-body dormant-body.md
-          --bybit-cache .cache/bybit-daily.json --dormant-cache .cache/dormant.json --oi-dir data/oi --out out
-          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL" --dormant-url "$DORMANT_URL"
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md --dormant-body dormant-body.md --rate-body rate-body.md
+          --bybit-cache .cache/bybit-daily.json --dormant-cache .cache/dormant.json --rate-cache .cache/rates.json --oi-dir data/oi --rate-dir data/rates --out out
+          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL" --dormant-url "$DORMANT_URL" --rate-url "$RATE_URL"
 
       - name: Run intrahour
         if: ${{ inputs.mode == 'intrahour' }}
@@ -148,6 +159,13 @@ jobs:
           path: .cache/dormant.json
           key: dormant-${{ github.run_id }}
 
+      - name: Save rate cache
+        if: ${{ always() && inputs.mode != 'intrahour' && hashFiles('.cache/rates.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/rates.json
+          key: rates-${{ github.run_id }}
+
       - name: Update issues
         uses: actions/github-script@v7
         env:
@@ -160,6 +178,7 @@ jobs:
           QUIET_NUMBER: ${{ steps.issue.outputs.quiet_number }}
           PRE_NUMBER: ${{ steps.issue.outputs.pre_number }}
           DORMANT_NUMBER: ${{ steps.issue.outputs.dormant_number }}
+          RATE_NUMBER: ${{ steps.issue.outputs.rate_number }}
         with:
           script: |
             const fs = require("fs");
@@ -182,6 +201,7 @@ jobs:
             await put("QUIET_NUMBER", "out/quiet-body.md", "out/quiet-comment.md");
             await put("PRE_NUMBER", "out/pre-body.md", "out/none.md");
             await put("DORMANT_NUMBER", "out/dormant-body.md", "out/none.md");
+            await put("RATE_NUMBER", "out/rate-body.md", "out/none.md");
 
       - name: Send Telegram
         env:
@@ -189,17 +209,16 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node src/notify.mjs out
 
-      # 把這輪發出的 Telegram 訊息（logs/telegram/）與 OI 紀錄（data/oi/）存回 repo，失敗不影響監控本身。
+      # 把這輪發出的 Telegram 訊息（logs/telegram/）、OI 紀錄（data/oi/）、借幣利率紀錄（data/rates/）存回 repo，失敗不影響監控本身。
       - name: Save Telegram log
         if: ${{ always() }}
         continue-on-error: true
         run: |
-          [ -d logs/telegram ] || [ -d data/oi ] || exit 0
-          git add logs/telegram data/oi 2>/dev/null || git add logs/telegram 2>/dev/null || git add data/oi
+          for d in logs/telegram data/oi data/rates; do if [ -d "$d" ]; then git add "$d"; fi; done
           if git diff --cached --quiet; then echo "沒有新的發送紀錄"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git commit -q -m "log: Telegram 發送紀錄、OI"
+          git commit -q -m "log: Telegram 發送紀錄、OI、借幣利率"
           for i in 1 2 3; do
             git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && exit 0
             sleep 5

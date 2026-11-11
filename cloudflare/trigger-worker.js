@@ -116,6 +116,7 @@ function needOf(d) {
   if (d.hourly) d.hourly.recent.forEach(a => add(a.venue, a.sym));
   if (d.pre) [...d.pre.early, ...d.pre.pre].forEach(a => add(a.venue, a.sym));
   if (d.dormant) d.dormant.events.forEach(e => add('okx', e.okx.sym));
+  if (d.rate) d.rate.events.forEach(e => add('okx', `${e.ccy}-USDT-SWAP`));
   return need;
 }
 /* 布局清單用哪一家報價：OKX → Bitget（快照）→ Bybit */
@@ -124,7 +125,7 @@ function layoutVenue(it) { const s = it.syms || {}; return ['okx', 'bitget', 'by
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls, cs, sn, sw, qs, ps, ds] = await Promise.all([
+  const [hs, ss, ls, cs, sn, sw, qs, ps, ds, rs] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
     stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
@@ -133,17 +134,19 @@ async function dashboard(env) {
     stateOf(by('掃流動性')?.body, 'SWEEP_STATE'),
     stateOf(by('量增價平')?.body, 'QUIET_STATE'),
     stateOf(by('盤中預警')?.body, 'PRE_STATE'),
-    stateOf(by('沉睡甦醒')?.body, 'DORMANT_STATE')
+    stateOf(by('沉睡甦醒')?.body, 'DORMANT_STATE'),
+    stateOf(by('借幣利率')?.body, 'RATE_STATE')
   ]);
-  const urls = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '短線清單', '布局清單', '金叉清單', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
-  const updated = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
+  const urls = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '短線清單', '布局清單', '金叉清單', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
+  const updated = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
   const d = {
     urls, updated,
-    warnings: Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
+    warnings: Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
     watch: parseWatch(by(WATCH_TITLE)?.body),
     hourly: hs ? { lastHour: hs.lastHour, recent: hs.recent || [] } : null,
     pre: ps ? { early: ps.early || [], pre: ps.pre || [], lastSlot: ps.lastSlot, lastPreHour: ps.lastPreHour } : null,
     dormant: ds ? { events: ds.events || [], lastHour: ds.lastHour } : null,
+    rate: rs ? { events: rs.events || [], top: rs.top || [], n: rs.n || 0, lastHour: rs.lastHour } : null,
     short: ss ? {
       lastDaily: ss.lastDaily,
       pending: (ss.pending || []).map(c => pick(c, ['base', 'cat', 'ex', 'id', 'dayT', 'hi', 'lo', 'close', 'vx', 'chgDay', 'pattern', 'quiet', 'qlim', 'atrp'])),
@@ -414,7 +417,7 @@ function lsg(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}cat
 function lss(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 /* 篩選與排序：預設值；使用者改過的存在瀏覽器，重新整理後保留（搜尋字不保留） */
 var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0,quiet:0,pane:'spike'},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,quiet:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0,quiet:0},cross:{q:'',cat:'all',watch:0}};
-var SD={hourly:{k:'t',d:-1},early:{k:'t',d:-1},pre:{k:'t',d:-1},wake:{k:'t',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
+var SD={hourly:{k:'t',d:-1},early:{k:'t',d:-1},pre:{k:'t',d:-1},wake:{k:'t',d:-1},rate:{k:'t',d:-1},rtop:{k:'x',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
 function merge(def,sv){var o={};Object.keys(def).forEach(function(k){var a=def[k],b=(sv||{})[k]||{},x={};Object.keys(a).forEach(function(j){x[j]=(j in b)?b[j]:a[j]});o[k]=x});return o}
 var F=merge(FD,lsg('sm_f',{})),S=merge(SD,lsg('sm_s',{}));
 Object.keys(F).forEach(function(k){F[k].q=''});
@@ -617,6 +620,25 @@ COLS.wake=function(){var mm=function(e){return e.kind==='B'?e.okx.xB+'x／'+e.bi
   {k:'pos',l:'距高點',n:1,s:function(e){return e.okx.pos},v:function(e){return pc100(e.okx.pos)+' <span class="cat">區間 '+e.okx.range+'%</span>'}},
   {k:'px',l:'現價',n:1,v:function(e){return FP('okx',LP('okx',e.okx.sym))}},
   {k:'aft',l:'之後',n:1,s:function(e){var p=LP('okx',e.okx.sym);return p&&e.price?p/e.price-1:null},v:function(e){var p=LP('okx',e.okx.sym);return p&&e.price?pc(p/e.price-1):'—'}}]};
+/* 借幣利率：OKX 槓桿借幣利率比 7 天中位數暴增 */
+function apr(v){return v==null||!isFinite(v)?'—':(v*100).toFixed(v>=1?0:1)+'%'}
+function rTv(c){return tv('okx',c+'-USDT-SWAP','60')}
+COLS.rate=function(){return [
+  {k:'ccy',l:'幣',dd:1,s:function(e){return e.ccy},v:function(e){return '<div class="c0w">'+link(e.ccy,rTv(e.ccy))+(e.by==='est'?'<span class="badge" title="只有下一小時預估值達標，可能沒成真">預估</span>':'')+(e.re?'<span class="cat" title="24 小時內又比上次通知翻倍">再升</span>':'')+(inWatch(e.ccy)?'<span class="star" title="已在自選">★</span>':WA(e.ccy))+'</div>'}},
+  {k:'t',l:'時間',s:function(e){return e.t},v:function(e){return tpe(e.t)}},
+  {k:'v',l:'年化',n:1,s:function(e){return e.v},v:function(e){return '<b>'+apr(e.v)+'</b>'}},
+  {k:'x',l:'倍數',n:1,s:function(e){return e.x},v:function(e){return e.x+'x <span class="cat">中位數 '+apr(e.base)+'</span>'}},
+  {k:'pe',l:'本小時／預估',n:1,s:function(e){return e.est},v:function(e){return apr(e.pre)+'／'+apr(e.est)}},
+  {k:'chg',l:'通知時 24h',n:1,s:function(e){return e.chg},v:function(e){return e.chg==null?'—':pc(e.chg)}},
+  {k:'px',l:'現價',n:1,v:function(e){return FP('okx',LP('okx',e.ccy+'-USDT-SWAP'))}},
+  {k:'aft',l:'之後',n:1,s:function(e){var p=LP('okx',e.ccy+'-USDT-SWAP');return p&&e.last?p/e.last-1:null},v:function(e){var p=LP('okx',e.ccy+'-USDT-SWAP');return p&&e.last?pc(p/e.last-1):'—'}}]};
+COLS.rtop=function(){return [
+  {k:'ccy',l:'幣',s:function(r){return r.ccy},v:function(r){return '<div class="c0w">'+link(r.ccy,rTv(r.ccy))+(inWatch(r.ccy)?'<span class="star" title="已在自選">★</span>':'')+'</div>'}},
+  {k:'pre',l:'本小時',n:1,s:function(r){return r.pre},v:function(r){return apr(r.pre)}},
+  {k:'est',l:'下一小時預估',n:1,s:function(r){return r.est},v:function(r){return apr(r.est)}},
+  {k:'base',l:'7天中位數',n:1,s:function(r){return r.base},v:function(r){return apr(r.base)}},
+  {k:'x',l:'倍數',n:1,s:function(r){return r.x},v:function(r){return r.x+'x'}},
+  {k:'chg',l:'24h',n:1,s:function(r){return r.chg},v:function(r){return r.chg==null?'—':pc(r.chg)}}]};
 COLS.pre=function(){return [
   {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.closed?'<span class="cat">週末休市</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
   {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
@@ -651,7 +673,7 @@ function pass(f,o){
   if(f.quiet&&!o.quiet)return false;return true}
 function sel(k,opts){var v=String(F[TAB][k]);return '<select data-f="'+k+'" class="'+(v!==String(FD[TAB][k])?'on':'')+'">'+opts.map(function(o){return '<option value="'+o[0]+'"'+(String(o[0])===v?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>'}
 function tg(k,l){return '<button class="tg'+(F[TAB][k]?' on':'')+'" data-t="'+k+'">'+l+'</button>'}
-function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='hourly'?({early:'early',pre:'pre',wake:'wake'}[F.hourly.pane]||'hourly'):TAB==='cross'?'crossA':TAB}
+function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='hourly'?({early:'early',pre:'pre',wake:'wake',rate:'rate'}[F.hourly.pane]||'hourly'):TAB==='cross'?'crossA':TAB}
 /* 區塊：標題固定，內容在區塊裡捲動（電腦） */
 function panel(title,body,cls){return '<section class="pnl '+(cls||'')+'">'+(title?'<h2>'+title+'</h2>':'')+'<div class="pnl-b">'+body+'</div></section>'}
 function fbar(){
@@ -659,7 +681,7 @@ function fbar(){
   var h='<input id="q" type="search" placeholder="搜尋代號（按 / 跳到這裡）" value="'+esc(f.q)+'" autocomplete="off" autocapitalize="characters" spellcheck="false"><div class="fc">';
   if(TAB==='short'&&D.short){h+='<span class="seg">'+[['open','持倉 '+D.short.open.length],['pend','等待觸發 '+D.short.pending.length],['closed','成績 '+(D.short.closed||[]).length]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>';
     h+=sel('side',[['all','多空都看'],['long','只看做多'],['short','只看做空']])}
-  if(TAB==='hourly'&&D.hourly){var P=D.pre;h+='<span class="seg">'+[['spike','正式爆量 '+D.hourly.recent.length],['early','盤中推算 '+(P?P.early.length:0)],['pre','預警 '+(P?P.pre.length:0)],['wake','沉睡甦醒 '+(D.dormant?D.dormant.events.length:0)]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
+  if(TAB==='hourly'&&D.hourly){var P=D.pre;h+='<span class="seg">'+[['spike','正式爆量 '+D.hourly.recent.length],['early','盤中推算 '+(P?P.early.length:0)],['pre','預警 '+(P?P.pre.length:0)],['wake','沉睡甦醒 '+(D.dormant?D.dormant.events.length:0)],['rate','借幣利率 '+(D.rate?D.rate.events.length:0)]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
   h+=sel('cat',TAB==='cross'?CATS.slice(0,3):CATS);
   if('ven' in f)h+=sel('ven',VENS);
   if(TAB==='hourly')h+=sel('win',[['72','72 小時'],['24','24 小時'],['6','6 小時']])+sel('minx',[['0','倍數不限'],['5','≥ 5x'],['10','≥ 10x'],['20','≥ 20x'],['50','≥ 50x']]);
@@ -788,7 +810,7 @@ function overlap(){
     D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t)+' @'+fp(it.close))})}
   return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b]}}).filter(function(x){return x.n>=2})
     .sort(function(a,b){return (b.n-a.n)||(inWatch(b.b)-inWatch(a.b))||a.b.localeCompare(b.b)})}
-var MODEXP={'盤中爆量':3,'盤中預警':3,'沉睡甦醒':3,'短線清單':3,'布局清單':30,'金叉清單':6,'掃流動性':6};
+var MODEXP={'盤中爆量':3,'盤中預警':3,'沉睡甦醒':3,'借幣利率':3,'短線清單':3,'布局清單':30,'金叉清單':6,'掃流動性':6};
 function status(){
   var s='<div class="card">';
   Object.keys(MODEXP).forEach(function(t){
@@ -839,6 +861,11 @@ function hourly(){
     return '<div class="vs"><div class="meta">每小時第 15、30、45 分，用進行中那根 1H K 的已成交量推算整根，達正式爆量門檻就推播；這根之前 24h 已漲過或跌過（≥ 1 倍日 ATR）的只列在這裡、不推播；這根正在拉的照樣推播。只有 OKX、Bitget，保留 24 小時。最近一次：'+(P&&P.lastSlot?tpe(+P.lastSlot.split(':')[0])+' 第 '+P.lastSlot.split(':')[1]+' 分':'—')+'。實測第 15 分約 5 成、30 分約 7 成、45 分約 8 成收盤後真的成為正式爆量。</div>'+panel('',table('early',el,COLS.early(),P?'無':'還沒有盤中推算資料'),'grow')+'</div>'}
   if(f.pane==='wake'){var W=D.dormant,wl=W?W.events.filter(function(e){return e.t>=Date.now()-w&&(!f.q||e.base.toLowerCase().indexOf(f.q.toLowerCase())>=0)&&(!f.watch||inWatch(e.base))}):[];CNT=[wl.length,W?W.events.length:0];
     return '<div class="vs"><div class="meta">OKX、Bitget 都有的加密合約（不設流動性門檻）：前 10 天價格區間 ≤30%，剛收盤的 1H 成交額 ≥3 萬、收紅、離區間高點不到 5%，兩家同一小時一起「放量」（≥ 前 10 天中位數 10 倍）或「30天新高量」。同一檔 7 天通知一次，保留 14 天。最近一次：'+(W&&W.lastHour?tpe(W.lastHour):'—')+'。回測 7 天內漲 ≥50%：放量 7%、30天新高量 9%、隨機 3%；直接進場中位數為負，只當觀察。</div>'+panel('',table('wake',wl,COLS.wake(),W?'無':'還沒有沉睡甦醒資料'),'grow')+'</div>'}
+  if(f.pane==='rate'){var RR=D.rate,rq=function(c){return (!f.q||c.toLowerCase().indexOf(f.q.toLowerCase())>=0)&&(!f.watch||inWatch(c))};
+    var rl=RR?RR.events.filter(function(e){return e.t>=Date.now()-w&&rq(e.ccy)}):[],rt=RR?RR.top.filter(function(r){return rq(r.ccy)}):[];CNT=[rl.length,RR?RR.events.length:0];
+    return '<div class="vs"><div class="meta">OKX 槓桿借幣利率（年化，穩定幣不看）。每小時拿「本小時已定」與「下一小時預估」較高者比前 7 天中位數：≥3 倍、≥ 年化 50%、多 ≥30 個百分點就推播；只有預估達標標「預估」。同一幣 24 小時通知一次，期間再翻倍標「再升」。借幣需求暴增多半是借來做空或槓桿，方向看圖判斷；沒有回測，只當觀察。Bybit 的借幣利率 API 擋雲端 IP，所以只有 OKX。最近一次：'+(RR&&RR.lastHour?tpe(RR.lastHour):'—')+'。</div>'+
+      panel('通知紀錄 <small>保留 7 天</small>',table('rate',rl,COLS.rate(),RR?'無':'還沒有借幣利率資料'),'grow')+
+      panel('目前倍數最高 <small>'+rt.length+'／'+(RR?RR.n:0)+' 檔</small>',table('rtop',rt,COLS.rtop(),RR?'無':'還沒有借幣利率資料'),'grow')+'</div>'}
   if(f.pane==='pre'){var pl=P?P.pre.filter(function(a){return a.t>=Date.now()-w&&ok(a)}):[];CNT=[pl.length,P?P.pre.length:0];
     return '<div class="vs"><div class="meta">整點收盤後，比前一根 ≥2x 或同時段 ≥2x、但還沒到正式爆量；同一檔 6 小時內只列一次，保留 12 小時。約 3 成正式爆量在前 1 小時會先出現預警，沒升級的多半是雜訊。</div>'+panel('',table('pre',pl,COLS.pre(),P?'無':'還沒有預警資料'),'grow')+'</div>'}
   CNT=[list.length,h.recent.length];

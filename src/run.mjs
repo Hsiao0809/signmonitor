@@ -22,6 +22,8 @@ import * as EA from './early.mjs';
 import * as DM from './dormant.mjs';
 import * as DS from './dormant-scan.mjs';
 import * as OI from './oi.mjs';
+import * as RT from './rate.mjs';
+import * as RTS from './rate-scan.mjs';
 import { parseWatch } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
@@ -309,6 +311,28 @@ async function main() {
     catch (e) { console.log(`oi warning: ${e.message}`); }
   }
 
+  /* ---------- 借幣利率（OKX）：每小時一次，利率比 7 天中位數暴增就推播；失敗只影響這一塊 ---------- */
+  let rspikes = [], rstats = null;
+  const rBody = a['rate-body'] && fs.existsSync(a['rate-body']) ? fs.readFileSync(a['rate-body'], 'utf8') : '';
+  const rstate = a['rate-body'] ? RT.extractRate(rBody) : null;
+  if (a['rate-body'] && !rstate) hw.push('借幣利率 Issue 的狀態無法解析；為避免覆蓋，本輪略過');
+  const rHour = Math.floor(Date.now() / HOUR) * HOUR;
+  if (doHourly && rstate && rstate.lastHour !== rHour) {
+    const rw = [];
+    try {
+      const rcPath = a['rate-cache'] || '.cache/rates.json';
+      const rcache = RTS.loadCache(rcPath);
+      const r = await RTS.collect(rcache, rHour, rw);
+      RTS.saveCache(rcPath, rcache);
+      if (a['rate-dir']) RTS.appendRates(a['rate-dir'], rHour, r.rows);
+      rspikes = RT.pickSpikes(rstate, r.rows, rcache.h, rHour, r.px);
+      rstats = r.stats;
+      const rnote = `最近一次檢查：${T.tpe(rHour)} 台灣時間；OKX ${r.stats.coins} 個幣，判斷 ${rstate.n} 個（穩定幣與紀錄不足的除外），本輪補歷史 ${r.stats.backfilled} 檔，通知 ${rspikes.length} 檔`;
+      fs.writeFileSync(path.join(outDir, 'rate-body.md'), RT.rateBody(rstate, { nowMs, warnings: rw, note: rnote }, t => T.render(t, 'md')));
+    } catch (e) { hw.push(`借幣利率判斷失敗：${e.message}`); }
+    rw.forEach(w => console.log('rate warning:', w));
+  }
+
   /* ---------- 量增價平：新紀錄＋到期的 24h／72h 漲跌；失敗只影響這一塊 ---------- */
   let qadded = [];
   const qBody = a['quiet-body'] && fs.existsSync(a['quiet-body']) ? fs.readFileSync(a['quiet-body'], 'utf8') : '';
@@ -353,6 +377,8 @@ async function main() {
   if (pmsg) msgs.push(pmsg);
   const dmsg = DM.wakeAlertText(dwake, targetHour, a['dormant-url'] || '');
   if (dmsg) msgs.push(dmsg);
+  const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '');
+  if (rmsg) msgs.push(rmsg);
   if (cross?.newA?.length) msgs.push(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || ''));
   if (cross?.failed) msgs.push(`訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次`);
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
@@ -383,7 +409,7 @@ async function main() {
     `snapshot=${snap ? `market=${snap.market.length} bitget=${Object.keys(snap.px.bitget).length} binance=${Object.keys(snap.px.binance).length}` : 'skip'}`,
     `sweep=${sweep ? `targets=${sweep.n} events=${sweep.events} added=${sweep.added}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
-    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} dormant=${dstats ? `${dwake.length}/${dstats.dormant}/${dstats.scanned} bf=${dstats.backfilled}` : 'skip'} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
+    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} dormant=${dstats ? `${dwake.length}/${dstats.dormant}/${dstats.scanned} bf=${dstats.backfilled}` : 'skip'} rate=${rstats ? `${rspikes.length}/${rstate.n} bf=${rstats.backfilled}` : 'skip'} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');
   console.log(summary);
   [...warnings, ...hw].forEach(w => console.log('warning:', w));

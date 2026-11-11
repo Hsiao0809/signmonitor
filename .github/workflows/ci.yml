@@ -17,4 +17,4 @@ jobs:
         with:
           node-version: "22"
       - name: Unit tests
-        run: node --test test/tracker.test.mjs test/layout.test.mjs test/hourly.test.mjs test/watch.test.mjs test/cross.test.mjs test/quiet.test.mjs test/sweep.test.mjs
+        run: node --test test/tracker.test.mjs test/layout.test.mjs test/hourly.test.mjs test/watch.test.mjs test/cross.test.mjs test/quiet.test.mjs test/sweep.test.mjs test/rate.test.mjs
