@@ -35,6 +35,29 @@ function formatWatch(symbols) {
     '', A, ...symbols, B, ''].join('\n');
 }
 
+/* 自選區塊逐行修改：其他行（含借幣利率自動加入的到期標記、自己寫的註解）原樣保留。
+   手動加入一個自動加入的代號＝改成手動（之後不會被自動移出）。 */
+function editWatch(body, action, sym) {
+  let src = body || '';
+  if (src.indexOf(A) < 0 || src.indexOf(B) < src.indexOf(A)) src = formatWatch(parseWatch(src));
+  const a = src.indexOf(A) + A.length, b = src.indexOf(B);
+  let lines = src.slice(a, b).split('\n').filter(l => l.trim());
+  const same = l => normalizeSymbol(l.replace(/#.*/, '')) === sym;
+  if (action === 'remove') lines = lines.filter(l => !same(l));
+  else if (lines.some(same)) lines = lines.map(l => (same(l) && /借幣利率自動/.test(l) ? sym : l));
+  else lines.push(sym);
+  return `${src.slice(0, a)}\n${lines.join('\n')}\n${src.slice(b)}`;
+}
+function autoOf(body) {
+  const a = (body || '').indexOf(A), b = (body || '').indexOf(B), out = {};
+  if (a < 0 || b <= a) return out;
+  for (const l of body.slice(a + A.length, b).split('\n')) {
+    const s = normalizeSymbol(l.replace(/#.*/, '')), m = l.match(/#\s*借幣利率自動 到期 (\S+)/);
+    if (s && m && isFinite(Date.parse(m[1]))) out[s] = Date.parse(m[1]);
+  }
+  return out;
+}
+
 /* ---------- GitHub ---------- */
 async function gh(env, path, init = {}) {
   const r = await fetch(`https://api.github.com${path}`, {
@@ -143,6 +166,7 @@ async function dashboard(env) {
     urls, updated,
     warnings: Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
     watch: parseWatch(by(WATCH_TITLE)?.body),
+    watchAuto: autoOf(by(WATCH_TITLE)?.body),
     hourly: hs ? { lastHour: hs.lastHour, recent: hs.recent || [] } : null,
     pre: ps ? { early: ps.early || [], pre: ps.pre || [], lastSlot: ps.lastSlot, lastPreHour: ps.lastPreHour } : null,
     dormant: ds ? { events: ds.events || [], lastHour: ds.lastHour } : null,
@@ -218,7 +242,7 @@ async function api(req, env, url, ctx) {
   }
   if (url.pathname === '/api/watch' && req.method === 'GET') {
     const issue = await watchIssue(env);
-    return json({ symbols: parseWatch(issue.body), issueUrl: issue.html_url });
+    return json({ symbols: parseWatch(issue.body), auto: autoOf(issue.body), issueUrl: issue.html_url });
   }
   if (url.pathname === '/api/check' && req.method === 'GET') {
     const sym = normalizeSymbol(url.searchParams.get('s'));
@@ -232,16 +256,15 @@ async function api(req, env, url, ctx) {
     const sym = normalizeSymbol(symbol);
     if (!sym || !['add', 'remove'].includes(action)) return json({ error: '代號或動作不對' }, 400);
     const issue = await watchIssue(env);
-    let list = parseWatch(issue.body);
     let venues = null;
     if (action === 'add') {
       venues = await venuesOf(sym);
       if (!Object.keys(venues).length) return json({ error: `${sym} 在 OKX、Bitget、Bybit 都找不到永續合約` }, 404);
-      if (!list.includes(sym)) list.push(sym);
-    } else list = list.filter(s => s !== sym);
-    await gh(env, `/repos/${REPO}/issues/${issue.number}`, { method: 'PATCH', body: JSON.stringify({ body: formatWatch(list), state: 'open' }) });
+    }
+    const body = editWatch(issue.body, action, sym);
+    await gh(env, `/repos/${REPO}/issues/${issue.number}`, { method: 'PATCH', body: JSON.stringify({ body, state: 'open' }) });
     await caches.default.delete(new Request(url.origin + '/api/data'));
-    return json({ symbols: list, venues });
+    return json({ symbols: parseWatch(body), auto: autoOf(body), venues });
   }
   return json({ error: 'not found' }, 404);
 }
@@ -918,7 +941,7 @@ function watch(){
   var left=panel('自選標的 <small>'+D.watch.length+'</small>','<div class="card">'+
     '<div class="row" id="pwcard" style="margin-bottom:8px;display:'+(PW?'none':'flex')+'"><input id="pw" type="password" placeholder="密碼（只需輸入一次）" style="text-transform:none"><button class="btn pri" id="pwsave">確定</button></div>'+
     '<div class="row"><input id="sym" placeholder="代號，例如 APP、HYPE" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn pri" id="add">加入</button></div><div class="msg" id="msg"></div>'+
-    '<div id="wl"></div><div class="sub">一律監控；盤中爆量門檻放寬為同時段 3 倍、近 48 小時 2 倍。加入後下一個整點生效。</div></div>');
+    '<div id="wl"></div><div class="sub">一律監控；盤中爆量門檻放寬為同時段 3 倍、近 48 小時 2 倍。加入後下一個整點生效。借幣利率飆高的幣會自動加入、7 天後自動移出（期間再飆高就延長）；自己加入的不會被移出。</div></div>');
   var sws=(D.sweep?D.sweep.events:[]).filter(function(e){return inWatch(e.base)});
   var right=panel('自選標的的盤中爆量 <small>72 小時內 '+rec.length+' 筆</small>',table('wh',rec,COLS.wh(),'尚無'),'grow')+
     panel('自選標的的掃流動性 <small>72 小時內 '+sws.length+' 筆　每根 4H K 收盤後更新；僅供參考，沒有回測</small>',table('ws',sws,COLS.ws(),D.sweep?'尚無':'還沒有資料（下一根 4H K 收盤後產生）'),'grow');
@@ -930,7 +953,9 @@ function drawWatch(){
   D.watch.forEach(function(sym){
     var d=document.createElement('div');d.className='wl';
     d.innerHTML='<span class="sym" style="min-width:56px"></span><span class="chips cat">檢查中…</span><button class="btn del">移除</button>';
-    d.querySelector('.sym').textContent=sym;d.querySelector('button').onclick=function(){change('remove',sym)};box.appendChild(d);
+    d.querySelector('.sym').textContent=sym;d.querySelector('button').onclick=function(){change('remove',sym)};
+    var au=D.watchAuto&&D.watchAuto[sym];if(au){var bg=document.createElement('span');bg.className='cat';bg.title='借幣利率飆高時自動加入；到期自動移出，期間再飆高會延長。按「加入」可改成手動（不再自動移出）';bg.textContent='借幣利率自動 '+tpe(au).slice(5,16)+' 移出';d.insertBefore(bg,d.querySelector('button'))}
+    box.appendChild(d);
     var put=function(v){var c=d.querySelector('.chips');c.className='chips';var ks=Object.keys(v);if(!ks.length){c.className='chips cat';c.textContent='三家都找不到合約';return}
       c.innerHTML=ks.map(function(k){return '<a class="badge" target="_blank" rel="noopener" href="'+esc(tv(k,v[k],'60'))+'">'+VL[k]+'</a>'}).join('')};
     if(VC[sym])put(VC[sym]);else fetch('/api/check?s='+encodeURIComponent(sym)).then(function(r){return r.json()}).then(function(j){VC[sym]=j.venues||{};put(VC[sym])}).catch(function(){});
@@ -943,7 +968,7 @@ function change(action,symbol){
   .then(function(r){return r.json().then(function(j){return {r:r,j:j}})}).then(function(o){
     if(o.r.status===401){PW='';try{localStorage.removeItem('sm_pw')}catch(e){}$('pwcard').style.display='flex'}
     if(!o.r.ok)throw new Error(o.j.error||o.r.status);
-    D.watch=o.j.symbols;
+    D.watch=o.j.symbols;if(o.j.auto)D.watchAuto=o.j.auto;
     if(action==='add'){VC[symbol]=o.j.venues||VC[symbol];msg(symbol+' 已加入（'+Object.keys(o.j.venues||{}).map(function(x){return VL[x]}).join('、')+'），下一個整點生效','ok');$('sym').value=''}
     else msg(symbol+' 已移除','ok');
     drawWatch();tabs()}).catch(function(e){msg(e.message,'err')}).then(function(){if(b)b.disabled=false})}
@@ -1007,7 +1032,7 @@ function quickAdd(sym){
   .then(function(r){return r.json().then(function(j){return {r:r,j:j}},function(){return {r:r,j:{}}})}).then(function(o){
     if(o.r.status===401){PW='';try{localStorage.removeItem('sm_pw')}catch(e){}askPw(sym,'密碼錯誤');return}
     if(!o.r.ok)throw new Error(o.j.error||('加入失敗（'+o.r.status+'）'));
-    D.watch=o.j.symbols||D.watch;VC[sym]=o.j.venues||VC[sym]||{};
+    D.watch=o.j.symbols||D.watch;if(o.j.auto)D.watchAuto=o.j.auto;VC[sym]=o.j.venues||VC[sym]||{};
     waBtns(sym).forEach(function(b){b.outerHTML='<span class="star" title="已在自選" aria-label="已在自選">★</span>'});tabs();
     var vs=Object.keys(o.j.venues||{}).map(function(x){return VL[x]}).join('、');
     toast(esc(sym)+' 已加入自選'+(vs?'（'+vs+'）':'')+'，下一個整點生效','ok')})

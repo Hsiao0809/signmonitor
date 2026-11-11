@@ -179,6 +179,7 @@ jobs:
           PRE_NUMBER: ${{ steps.issue.outputs.pre_number }}
           DORMANT_NUMBER: ${{ steps.issue.outputs.dormant_number }}
           RATE_NUMBER: ${{ steps.issue.outputs.rate_number }}
+          WATCH_NUMBER: ${{ steps.issue.outputs.watch_number }}
         with:
           script: |
             const fs = require("fs");
@@ -202,6 +203,21 @@ jobs:
             await put("PRE_NUMBER", "out/pre-body.md", "out/none.md");
             await put("DORMANT_NUMBER", "out/dormant-body.md", "out/none.md");
             await put("RATE_NUMBER", "out/rate-body.md", "out/none.md");
+
+            // 自選標的：借幣利率推播的幣自動加入（7 天後移出）。讀最新的 Issue 再套用，避免蓋掉網頁剛做的修改。
+            try {
+              const W = await import(`${process.env.GITHUB_WORKSPACE}/src/watch.mjs`);
+              const adds = fs.existsSync("out/watch-auto.json") ? JSON.parse(fs.readFileSync("out/watch-auto.json", "utf8")) : [];
+              const issue_number = Number(process.env.WATCH_NUMBER);
+              const { data: wi } = await github.rest.issues.get({ owner, repo, issue_number });
+              const r = W.applyAuto(wi.body || "", adds, Date.now());
+              if (r.changed) {
+                await github.rest.issues.update({ owner, repo, issue_number, body: r.body });
+                core.info(`自選：加入 ${r.added.join(",") || "-"}；延長 ${r.renewed.join(",") || "-"}；到期移出 ${r.removed.join(",") || "-"}`);
+              }
+            } catch (error) {
+              core.warning(`自選自動更新失敗：${error.message}`);
+            }
 
       - name: Send Telegram
         env:

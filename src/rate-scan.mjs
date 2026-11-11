@@ -90,7 +90,10 @@ export async function collect(cache, T, warnings) {
   for (const c of Object.keys(cache.bf)) if (T - cache.bf[c] > 48 * H) delete cache.bf[c];
   let px = {};
   try { px = await spot(); } catch { warnings.push('OKX 現貨價格取得失敗（不影響判斷）'); }
-  return { rows, px, stats: { coins: rows.length, backfilled, need: need.length } };
+  /* OKX 有 USDT 永續合約的幣（自動加入自選只加這些）；抓不到時回 null＝不限制 */
+  const sw = await V.getJSON('https://www.okx.com/api/v5/public/instruments?instType=SWAP');
+  const swaps = sw?.data?.length ? new Set(sw.data.filter(i => i.instId.endsWith('-USDT-SWAP')).map(i => i.instId.slice(0, -10))) : null;
+  return { rows, px, swaps, stats: { coins: rows.length, backfilled, need: need.length } };
 }
 
 /** 同一小時已經寫過就不重寫 */

@@ -27,3 +27,22 @@ test('自選標的門檻放寬、通知標【自選】並排在最前面', () =>
   assert.deepEqual(a.map(x => x.base), ['BBB', 'CCC']);
   assert.match(HR.hourlyAlertText(a, T), /【自選】<?.*BBB/s);
 });
+
+test('借幣利率自動加入：新增、延長、到期移出；手動的（含註解）不動', () => {
+  const D = 864e5, now = Date.UTC(2026, 10, 11, 6);
+  const base = W.formatWatch(['APP', 'HYPE']).replace('\nHYPE\n', '\nHYPE # 觀察\n');
+  let r = W.applyAuto(base, [{ sym: 'RSR', until: now + 7 * D }, { sym: 'APP', until: now + 7 * D }], now);
+  assert.deepEqual([r.added, r.manual, r.changed], [['RSR'], ['APP'], true]);
+  assert.deepEqual(W.parseWatch(r.body), ['APP', 'HYPE', 'RSR']);
+  assert.match(r.body, /HYPE # 觀察\n/);
+  assert.deepEqual(W.autoOf(r.body), { RSR: now + 7 * D });
+  r = W.applyAuto(r.body, [{ sym: 'rsr', until: now + 9 * D }], now + D);
+  assert.deepEqual(r.renewed, ['RSR']);
+  assert.equal(W.autoOf(r.body).RSR, now + 9 * D);
+  assert.equal(W.applyAuto(r.body, [{ sym: 'RSR', until: now + 8 * D }], now + D).changed, false);   /* 較早的到期不縮短 */
+  r = W.applyAuto(r.body, [], now + 9 * D);
+  assert.deepEqual([r.removed, W.parseWatch(r.body)], [['RSR'], ['APP', 'HYPE']]);
+  assert.equal(W.applyAuto(r.body, [], now + 20 * D).changed, false);
+  /* Issue 沒有標記區塊時補上 */
+  assert.deepEqual(W.parseWatch(W.applyAuto('', [{ sym: 'ZIL', until: now + D }], now).body), ['ZIL']);
+});

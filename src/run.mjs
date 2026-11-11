@@ -24,7 +24,7 @@ import * as DS from './dormant-scan.mjs';
 import * as OI from './oi.mjs';
 import * as RT from './rate.mjs';
 import * as RTS from './rate-scan.mjs';
-import { parseWatch } from './watch.mjs';
+import { parseWatch, applyAuto, AUTO_DAYS } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
 import * as SN from './snapshot.mjs';
@@ -126,7 +126,8 @@ async function main() {
   const doHourly = !a.now && a.hourly !== 'skip' && hstate.lastHour !== targetHour;
   const hw = [];
   let prep = null, capP = Promise.resolve({});
-  const watch = parseWatch(a['watch-body'] && fs.existsSync(a['watch-body']) ? fs.readFileSync(a['watch-body'], 'utf8') : '');
+  const watchBody = a['watch-body'] && fs.existsSync(a['watch-body']) ? fs.readFileSync(a['watch-body'], 'utf8') : '';
+  const watch = parseWatch(watchBody);
   if (doHourly) {
     if (watch.length) console.log(`watch: ${watch.join(',')}`);
     try { prep = await HS.prepare(cache, hw, watch); } catch (e) { hw.push(`盤中爆量準備失敗：${e.message}`); }
@@ -312,7 +313,7 @@ async function main() {
   }
 
   /* ---------- 借幣利率（OKX）：每小時一次，利率比 7 天中位數暴增就推播；失敗只影響這一塊 ---------- */
-  let rspikes = [], rstats = null;
+  let rspikes = [], rstats = null, rauto = null;
   const rBody = a['rate-body'] && fs.existsSync(a['rate-body']) ? fs.readFileSync(a['rate-body'], 'utf8') : '';
   const rstate = a['rate-body'] ? RT.extractRate(rBody) : null;
   if (a['rate-body'] && !rstate) hw.push('借幣利率 Issue 的狀態無法解析；為避免覆蓋，本輪略過');
@@ -327,6 +328,11 @@ async function main() {
       if (a['rate-dir']) RTS.appendRates(a['rate-dir'], rHour, r.rows);
       rspikes = RT.pickSpikes(rstate, r.rows, rcache.h, rHour, r.px);
       rstats = r.stats;
+      /* 推播的幣自動加入自選：實際寫入在 workflow 的 Update issues（讀最新的 Issue 再套用，避免蓋掉網頁剛做的修改） */
+      const ok = rspikes.filter(e => !r.swaps || r.swaps.has(e.ccy));
+      const adds = ok.map(e => ({ sym: e.ccy, until: rHour + AUTO_DAYS * 24 * HOUR }));
+      fs.writeFileSync(path.join(outDir, 'watch-auto.json'), JSON.stringify(adds));
+      if (rspikes.length) rauto = { ...applyAuto(watchBody, adds, Date.now()), noSwap: rspikes.filter(e => !ok.includes(e)).map(e => e.ccy) };
       const rnote = `最近一次檢查：${T.tpe(rHour)} 台灣時間；OKX ${r.stats.coins} 個幣，判斷 ${rstate.n} 個（穩定幣與紀錄不足的除外），本輪補歷史 ${r.stats.backfilled} 檔，通知 ${rspikes.length} 檔`;
       fs.writeFileSync(path.join(outDir, 'rate-body.md'), RT.rateBody(rstate, { nowMs, warnings: rw, note: rnote }, t => T.render(t, 'md')));
     } catch (e) { hw.push(`借幣利率判斷失敗：${e.message}`); }
@@ -377,7 +383,7 @@ async function main() {
   if (pmsg) msgs.push(pmsg);
   const dmsg = DM.wakeAlertText(dwake, targetHour, a['dormant-url'] || '');
   if (dmsg) msgs.push(dmsg);
-  const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '');
+  const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '', RT.RATE, rauto, AUTO_DAYS);
   if (rmsg) msgs.push(rmsg);
   if (cross?.newA?.length) msgs.push(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || ''));
   if (cross?.failed) msgs.push(`訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次`);

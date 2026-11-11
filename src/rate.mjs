@@ -82,7 +82,18 @@ const pcs = v => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1
 const hhmm = t => tpe(t).slice(11, 16);
 const tvOf = ccy => tvUrl('okx', `${ccy}-USDT-SWAP`, '60');
 
-export function rateAlertText(events, T, url = '', cfg = RATE) {
+/** auto：applyAuto 的結果（added／renewed／manual）＋ noSwap（OKX 沒有永續合約、沒加入的） */
+export function autoText(auto, days) {
+  if (!auto) return '';
+  const p = [];
+  if (auto.added?.length) p.push(`已加入自選 ${auto.added.join('、')}（${days} 天後自動移出）`);
+  if (auto.renewed?.length) p.push(`自選延長 ${days} 天：${auto.renewed.join('、')}`);
+  if (auto.manual?.length) p.push(`原本就在自選：${auto.manual.join('、')}`);
+  if (auto.noSwap?.length) p.push(`OKX 沒有永續合約、未加入自選：${auto.noSwap.join('、')}`);
+  return p.join('；');
+}
+
+export function rateAlertText(events, T, url = '', cfg = RATE, auto = null, days = 7) {
   if (!events.length) return '';
   const L = [`【借幣利率飆高】${tpe(T).slice(5, 10)} ${hhmm(T)} 台灣時間（OKX 槓桿借幣，${events.length} 檔）`];
   events.slice(0, cfg.maxLines).forEach(e => {
@@ -90,6 +101,8 @@ export function rateAlertText(events, T, url = '', cfg = RATE) {
     L.push(`  本小時 ${apr(e.pre)}｜下一小時預估 ${apr(e.est)}${e.last ? `｜價格 ${fmtP(e.last)}（24h ${pcs(e.chg)}）` : ''}`);
   });
   if (events.length > cfg.maxLines) L.push(`另有 ${events.length - cfg.maxLines} 檔，見網頁`);
+  const at = autoText(auto, days);
+  if (at) L.push(at);
   L.push('借幣需求暴增（多半是借來做空或槓桿），方向要看圖判斷；沒有回測，只當觀察');
   if (url) L.push(url);
   return L.join('\n');
@@ -100,6 +113,7 @@ export function rateMarkdown(state, { nowMs, warnings = [], note = '', rows = 15
   L.push(`OKX 槓桿借幣的市場利率（年化），穩定幣不看。每小時比較「本小時已定利率」與「下一小時預估利率」較高者，跟前 7 天每小時利率的中位數比：`);
   L.push(`- ≥ 中位數 ${cfg.x} 倍、≥ 年化 ${cfg.minRate * 100}%、且比中位數多 ≥ ${cfg.minAdd * 100} 個百分點 → 推播`);
   L.push(`- 只有預估值達標的標「預估」；同一幣 ${cfg.coolH} 小時只通知一次，期間利率再翻倍標「再升」再通知`);
+  L.push(`- 推播的幣（OKX 有永續合約的）自動加入自選，7 天後自動移出，期間再飆高就延長；原本就在自選的不變`);
   L.push(`- 紀錄不到 ${cfg.minBase} 小時的幣先不判斷。沒有回測，只當觀察。Bybit 的借幣利率 API 擋雲端 IP，所以只有 OKX。`);
   if (note) { L.push(''); L.push(note); }
   L.push('', `## 最近 ${cfg.keepDays} 天通知（${state.events.length} 筆）`);

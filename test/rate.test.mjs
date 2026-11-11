@@ -67,3 +67,13 @@ test('每小時紀錄：同一小時不重寫、不存穩定幣', () => {
   const line = JSON.parse(fs.readFileSync(path.join(dir, '2026-11-11.jsonl'), 'utf8').trim());
   assert.deepEqual(line, { t: T, r: { BTC: [0.005, 0.006] } });
 });
+
+test('通知註明自動加入自選', () => {
+  const st = R.emptyRate();
+  const ev = R.pickSpikes(st, [{ ccy: 'ABC', pre: 0.9, est: 0.9 }], { ABC: flat(0.2) }, T);
+  const txt = R.rateAlertText(ev, T, '', R.RATE, { added: ['ABC'], renewed: [], manual: ['XYZ'], noSwap: ['QQQ'] }, 7);
+  assert.match(txt, /已加入自選 ABC（7 天後自動移出）/);
+  assert.match(txt, /原本就在自選：XYZ/);
+  assert.match(txt, /OKX 沒有永續合約、未加入自選：QQQ/);
+  assert.doesNotMatch(R.rateAlertText(ev, T), /自選/);
+});
