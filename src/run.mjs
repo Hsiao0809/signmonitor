@@ -19,6 +19,9 @@ import * as V from './venues.mjs';
 import * as HR from './hourly.mjs';
 import * as HS from './hourly-scan.mjs';
 import * as EA from './early.mjs';
+import * as DM from './dormant.mjs';
+import * as DS from './dormant-scan.mjs';
+import * as OI from './oi.mjs';
 import { parseWatch } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
@@ -282,6 +285,30 @@ async function main() {
   }
   HS.saveCache(cachePath, cache);
 
+  /* ---------- 沉睡甦醒（OKX＋Bitget 全部加密合約）＋ OI 紀錄：每小時一次，失敗只影響這一塊 ---------- */
+  let dwake = [], dstats = null, dpairs = null;
+  const dBody = a['dormant-body'] && fs.existsSync(a['dormant-body']) ? fs.readFileSync(a['dormant-body'], 'utf8') : '';
+  const dstate = a['dormant-body'] ? DM.extractDormant(dBody) : null;
+  if (a['dormant-body'] && !dstate) hw.push('沉睡甦醒 Issue 的狀態無法解析；為避免覆蓋，本輪略過');
+  if (doHourly && dstate && dstate.lastHour !== targetHour) {
+    const dw = [];
+    try {
+      const dcPath = a['dormant-cache'] || '.cache/dormant.json';
+      const dcache = DS.loadCache(dcPath);
+      const r = await DS.scanWake(dcache, targetHour, dw);
+      DS.saveCache(dcPath, dcache);
+      dstats = r.stats; dpairs = r.pairs;
+      dwake = DM.pickWake(dstate, r.sigs, targetHour);
+      const st = r.stats;
+      const dnote = `最近一次檢查：${T.tpe(targetHour)}–${T.tpe(targetHour + HOUR).slice(11)} 台灣時間這根 1H K；兩家都有的 ${st.pairs} 檔中 ${st.dormant} 個合約在沉睡、${r.sigs.length} 個單邊訊號，本小時通知 ${dwake.length} 檔。30 天最高量資料：本輪補 ${st.backfilled} 檔，尚缺 ${Math.max(0, st.needBackfill - st.backfilled)} 檔（缺的只判斷「放量」）。`;
+      fs.writeFileSync(path.join(outDir, 'dormant-body.md'), DM.dormantBody(dstate, { nowMs, warnings: dw, note: dnote }, t => T.render(t, 'md')));
+    } catch (e) { hw.push(`沉睡甦醒判斷失敗：${e.message}`); }
+  }
+  if (doHourly && a['oi-dir'] && dpairs?.length) {
+    try { OI.appendOI(a['oi-dir'], Math.floor(Date.now() / HOUR) * HOUR, await OI.snapshotOI(dpairs)); }
+    catch (e) { console.log(`oi warning: ${e.message}`); }
+  }
+
   /* ---------- 量增價平：新紀錄＋到期的 24h／72h 漲跌；失敗只影響這一塊 ---------- */
   let qadded = [];
   const qBody = a['quiet-body'] && fs.existsSync(a['quiet-body']) ? fs.readFileSync(a['quiet-body'], 'utf8') : '';
@@ -324,6 +351,8 @@ async function main() {
   if (hmsg) msgs.push(hmsg);
   const pmsg = EA.preAlertText(hpre, targetHour, a['pre-url'] || '');
   if (pmsg) msgs.push(pmsg);
+  const dmsg = DM.wakeAlertText(dwake, targetHour, a['dormant-url'] || '');
+  if (dmsg) msgs.push(dmsg);
   if (cross?.newA?.length) msgs.push(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || ''));
   if (cross?.failed) msgs.push(`訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次`);
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
@@ -354,7 +383,7 @@ async function main() {
     `snapshot=${snap ? `market=${snap.market.length} bitget=${Object.keys(snap.px.bitget).length} binance=${Object.keys(snap.px.binance).length}` : 'skip'}`,
     `sweep=${sweep ? `targets=${sweep.n} events=${sweep.events} added=${sweep.added}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
-    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
+    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} dormant=${dstats ? `${dwake.length}/${dstats.dormant}/${dstats.scanned} bf=${dstats.backfilled}` : 'skip'} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');
   console.log(summary);
   [...warnings, ...hw].forEach(w => console.log('warning:', w));

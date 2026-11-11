@@ -91,6 +91,7 @@ jobs:
             await ensure("掃流動性", "sweep-body.md", "sweep_");
             await ensure("量增價平", "quiet-body.md", "quiet_");
             await ensure("盤中預警", "pre-body.md", "pre_");
+            await ensure("沉睡甦醒", "dormant-body.md", "dormant_");
 
       - name: Restore Bybit daily cache
         if: ${{ inputs.mode != 'intrahour' }}
@@ -99,6 +100,14 @@ jobs:
           path: .cache/bybit-daily.json
           key: bybit-daily-${{ github.run_id }}
           restore-keys: bybit-daily-
+
+      - name: Restore dormant cache
+        if: ${{ inputs.mode != 'intrahour' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/dormant.json
+          key: dormant-${{ github.run_id }}
+          restore-keys: dormant-
 
       - name: Run monitor
         if: ${{ inputs.mode != 'intrahour' }}
@@ -110,11 +119,12 @@ jobs:
           CROSS_URL: ${{ steps.issue.outputs.cross_url }}
           QUIET_URL: ${{ steps.issue.outputs.quiet_url }}
           PRE_URL: ${{ steps.issue.outputs.pre_url }}
+          DORMANT_URL: ${{ steps.issue.outputs.dormant_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md
-          --bybit-cache .cache/bybit-daily.json --out out
-          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL"
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md --dormant-body dormant-body.md
+          --bybit-cache .cache/bybit-daily.json --dormant-cache .cache/dormant.json --oi-dir data/oi --out out
+          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL" --dormant-url "$DORMANT_URL"
 
       - name: Run intrahour
         if: ${{ inputs.mode == 'intrahour' }}
@@ -131,6 +141,13 @@ jobs:
           path: .cache/bybit-daily.json
           key: bybit-daily-${{ github.run_id }}
 
+      - name: Save dormant cache
+        if: ${{ always() && inputs.mode != 'intrahour' && hashFiles('.cache/dormant.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/dormant.json
+          key: dormant-${{ github.run_id }}
+
       - name: Update issues
         uses: actions/github-script@v7
         env:
@@ -142,6 +159,7 @@ jobs:
           SWEEP_NUMBER: ${{ steps.issue.outputs.sweep_number }}
           QUIET_NUMBER: ${{ steps.issue.outputs.quiet_number }}
           PRE_NUMBER: ${{ steps.issue.outputs.pre_number }}
+          DORMANT_NUMBER: ${{ steps.issue.outputs.dormant_number }}
         with:
           script: |
             const fs = require("fs");
@@ -163,6 +181,7 @@ jobs:
             await put("SWEEP_NUMBER", "out/sweep-body.md", "out/none.md");
             await put("QUIET_NUMBER", "out/quiet-body.md", "out/quiet-comment.md");
             await put("PRE_NUMBER", "out/pre-body.md", "out/none.md");
+            await put("DORMANT_NUMBER", "out/dormant-body.md", "out/none.md");
 
       - name: Send Telegram
         env:
@@ -170,17 +189,17 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node src/notify.mjs out
 
-      # 把這輪發出的 Telegram 訊息存回 repo 的 logs/telegram/，失敗不影響監控本身。
+      # 把這輪發出的 Telegram 訊息（logs/telegram/）與 OI 紀錄（data/oi/）存回 repo，失敗不影響監控本身。
       - name: Save Telegram log
         if: ${{ always() }}
         continue-on-error: true
         run: |
-          [ -d logs/telegram ] || exit 0
-          git add logs/telegram
+          [ -d logs/telegram ] || [ -d data/oi ] || exit 0
+          git add logs/telegram data/oi 2>/dev/null || git add logs/telegram 2>/dev/null || git add data/oi
           if git diff --cached --quiet; then echo "沒有新的發送紀錄"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git commit -q -m "log: Telegram 發送紀錄"
+          git commit -q -m "log: Telegram 發送紀錄、OI"
           for i in 1 2 3; do
             git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && exit 0
             sleep 5

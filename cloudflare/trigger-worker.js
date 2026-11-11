@@ -115,6 +115,7 @@ function needOf(d) {
   if (d.layout) d.layout.active.forEach(it => { const v = layoutVenue(it); if (v) add(v, it.syms[v]); });
   if (d.hourly) d.hourly.recent.forEach(a => add(a.venue, a.sym));
   if (d.pre) [...d.pre.early, ...d.pre.pre].forEach(a => add(a.venue, a.sym));
+  if (d.dormant) d.dormant.events.forEach(e => add('okx', e.okx.sym));
   return need;
 }
 /* 布局清單用哪一家報價：OKX → Bitget（快照）→ Bybit */
@@ -123,7 +124,7 @@ function layoutVenue(it) { const s = it.syms || {}; return ['okx', 'bitget', 'by
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls, cs, sn, sw, qs, ps] = await Promise.all([
+  const [hs, ss, ls, cs, sn, sw, qs, ps, ds] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
     stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
@@ -131,16 +132,18 @@ async function dashboard(env) {
     stateOf(by('行情快照')?.body, 'SNAPSHOT_STATE'),
     stateOf(by('掃流動性')?.body, 'SWEEP_STATE'),
     stateOf(by('量增價平')?.body, 'QUIET_STATE'),
-    stateOf(by('盤中預警')?.body, 'PRE_STATE')
+    stateOf(by('盤中預警')?.body, 'PRE_STATE'),
+    stateOf(by('沉睡甦醒')?.body, 'DORMANT_STATE')
   ]);
-  const urls = Object.fromEntries(['盤中爆量', '盤中預警', '短線清單', '布局清單', '金叉清單', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
-  const updated = Object.fromEntries(['盤中爆量', '盤中預警', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
+  const urls = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '短線清單', '布局清單', '金叉清單', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
+  const updated = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
   const d = {
     urls, updated,
-    warnings: Object.fromEntries(['盤中爆量', '盤中預警', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
+    warnings: Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '短線清單', '布局清單', '金叉清單', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
     watch: parseWatch(by(WATCH_TITLE)?.body),
     hourly: hs ? { lastHour: hs.lastHour, recent: hs.recent || [] } : null,
     pre: ps ? { early: ps.early || [], pre: ps.pre || [], lastSlot: ps.lastSlot, lastPreHour: ps.lastPreHour } : null,
+    dormant: ds ? { events: ds.events || [], lastHour: ds.lastHour } : null,
     short: ss ? {
       lastDaily: ss.lastDaily,
       pending: (ss.pending || []).map(c => pick(c, ['base', 'cat', 'ex', 'id', 'dayT', 'hi', 'lo', 'close', 'vx', 'chgDay', 'pattern', 'quiet', 'qlim', 'atrp'])),
@@ -411,7 +414,7 @@ function lsg(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}cat
 function lss(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 /* 篩選與排序：預設值；使用者改過的存在瀏覽器，重新整理後保留（搜尋字不保留） */
 var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0,quiet:0,pane:'spike'},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,quiet:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0,quiet:0},cross:{q:'',cat:'all',watch:0}};
-var SD={hourly:{k:'t',d:-1},early:{k:'t',d:-1},pre:{k:'t',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
+var SD={hourly:{k:'t',d:-1},early:{k:'t',d:-1},pre:{k:'t',d:-1},wake:{k:'t',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
 function merge(def,sv){var o={};Object.keys(def).forEach(function(k){var a=def[k],b=(sv||{})[k]||{},x={};Object.keys(a).forEach(function(j){x[j]=(j in b)?b[j]:a[j]});o[k]=x});return o}
 var F=merge(FD,lsg('sm_f',{})),S=merge(SD,lsg('sm_s',{}));
 Object.keys(F).forEach(function(k){F[k].q=''});
@@ -604,6 +607,16 @@ function prePxOf(a){if(!a.preH)return null;var t0=a.t-a.preH*3600e3;
   if(a.prePx)return {price:a.prePx,h:a.preH,t:t0};
   var ps=((D.pre&&D.pre.pre)||[]).filter(function(p){return p.venue===a.venue&&p.sym===a.sym&&p.t<a.t&&p.t>=a.t-12*3600e3&&p.price});
   if(!ps.length)return null;var p=ps.reduce(function(x,y){return y.t<x.t?y:x});return {price:p.price,h:Math.round((a.t-p.t)/3600e3),t:p.t}}
+/* 沉睡甦醒：10 天窄幅後 OKX、Bitget 同時放量 */
+COLS.wake=function(){var mm=function(e){return e.kind==='B'?e.okx.xB+'x／'+e.bitget.xB+'x':e.okx.xA+'x／'+e.bitget.xA+'x'};return [
+  {k:'base',l:'代號',dd:1,s:function(e){return e.base},v:function(e){return '<div class="c0w">'+link(e.base,tv('okx',e.okx.sym,'60'))+(e.kind==='B'?'<span class="badge" title="兩家都 ≥ 前 30 天最高 1H 量">30天新高量</span>':'<span class="cat" title="兩家都 ≥ 前 10 天每小時中位數 10 倍">放量</span>')+(e.upgrade?'<span class="cat">升級</span>':'')+(inWatch(e.base)?'<span class="star" title="已在自選">★</span>':WA(e.base))+'</div>'}},
+  {k:'t',l:'時間',s:function(e){return e.t},v:function(e){return tpe(e.t)}},
+  {k:'x',l:'倍數 OKX／Bitget',n:1,s:function(e){return e.kind==='B'?e.okx.xB:e.okx.xA},v:function(e){return mm(e)}},
+  {k:'qv',l:'成交額 OKX／Bitget',n:1,s:function(e){return e.okx.qv+e.bitget.qv},v:function(e){return money(e.okx.qv)+'／'+money(e.bitget.qv)}},
+  {k:'chg',l:'這根',n:1,s:function(e){return e.okx.chg},v:function(e){return pc100(e.okx.chg)}},
+  {k:'pos',l:'距高點',n:1,s:function(e){return e.okx.pos},v:function(e){return pc100(e.okx.pos)+' <span class="cat">區間 '+e.okx.range+'%</span>'}},
+  {k:'px',l:'現價',n:1,v:function(e){return FP('okx',LP('okx',e.okx.sym))}},
+  {k:'aft',l:'之後',n:1,s:function(e){var p=LP('okx',e.okx.sym);return p&&e.price?p/e.price-1:null},v:function(e){var p=LP('okx',e.okx.sym);return p&&e.price?pc(p/e.price-1):'—'}}]};
 COLS.pre=function(){return [
   {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.closed?'<span class="cat">週末休市</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
   {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
@@ -638,7 +651,7 @@ function pass(f,o){
   if(f.quiet&&!o.quiet)return false;return true}
 function sel(k,opts){var v=String(F[TAB][k]);return '<select data-f="'+k+'" class="'+(v!==String(FD[TAB][k])?'on':'')+'">'+opts.map(function(o){return '<option value="'+o[0]+'"'+(String(o[0])===v?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>'}
 function tg(k,l){return '<button class="tg'+(F[TAB][k]?' on':'')+'" data-t="'+k+'">'+l+'</button>'}
-function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='hourly'?({early:'early',pre:'pre'}[F.hourly.pane]||'hourly'):TAB==='cross'?'crossA':TAB}
+function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='hourly'?({early:'early',pre:'pre',wake:'wake'}[F.hourly.pane]||'hourly'):TAB==='cross'?'crossA':TAB}
 /* 區塊：標題固定，內容在區塊裡捲動（電腦） */
 function panel(title,body,cls){return '<section class="pnl '+(cls||'')+'">'+(title?'<h2>'+title+'</h2>':'')+'<div class="pnl-b">'+body+'</div></section>'}
 function fbar(){
@@ -646,7 +659,7 @@ function fbar(){
   var h='<input id="q" type="search" placeholder="搜尋代號（按 / 跳到這裡）" value="'+esc(f.q)+'" autocomplete="off" autocapitalize="characters" spellcheck="false"><div class="fc">';
   if(TAB==='short'&&D.short){h+='<span class="seg">'+[['open','持倉 '+D.short.open.length],['pend','等待觸發 '+D.short.pending.length],['closed','成績 '+(D.short.closed||[]).length]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>';
     h+=sel('side',[['all','多空都看'],['long','只看做多'],['short','只看做空']])}
-  if(TAB==='hourly'&&D.hourly){var P=D.pre;h+='<span class="seg">'+[['spike','正式爆量 '+D.hourly.recent.length],['early','盤中推算 '+(P?P.early.length:0)],['pre','預警 '+(P?P.pre.length:0)]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
+  if(TAB==='hourly'&&D.hourly){var P=D.pre;h+='<span class="seg">'+[['spike','正式爆量 '+D.hourly.recent.length],['early','盤中推算 '+(P?P.early.length:0)],['pre','預警 '+(P?P.pre.length:0)],['wake','沉睡甦醒 '+(D.dormant?D.dormant.events.length:0)]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
   h+=sel('cat',TAB==='cross'?CATS.slice(0,3):CATS);
   if('ven' in f)h+=sel('ven',VENS);
   if(TAB==='hourly')h+=sel('win',[['72','72 小時'],['24','24 小時'],['6','6 小時']])+sel('minx',[['0','倍數不限'],['5','≥ 5x'],['10','≥ 10x'],['20','≥ 20x'],['50','≥ 50x']]);
@@ -775,7 +788,7 @@ function overlap(){
     D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t)+' @'+fp(it.close))})}
   return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b]}}).filter(function(x){return x.n>=2})
     .sort(function(a,b){return (b.n-a.n)||(inWatch(b.b)-inWatch(a.b))||a.b.localeCompare(b.b)})}
-var MODEXP={'盤中爆量':3,'盤中預警':3,'短線清單':3,'布局清單':30,'金叉清單':6,'掃流動性':6};
+var MODEXP={'盤中爆量':3,'盤中預警':3,'沉睡甦醒':3,'短線清單':3,'布局清單':30,'金叉清單':6,'掃流動性':6};
 function status(){
   var s='<div class="card">';
   Object.keys(MODEXP).forEach(function(t){
@@ -824,6 +837,8 @@ function hourly(){
   var P=D.pre,ok=function(a){return a.x1>=mx&&pass(f,{base:a.base,cat:a.cat,vens:[a.venue],watch:hW(a),single:a.single,quiet:a.quiet})};
   if(f.pane==='early'){var el=P?P.early.filter(function(a){return a.t>=Date.now()-w&&ok(a)}):[];CNT=[el.length,P?P.early.length:0];
     return '<div class="vs"><div class="meta">每小時第 15、30、45 分，用進行中那根 1H K 的已成交量推算整根，達正式爆量門檻就推播；這根之前 24h 已漲過或跌過（≥ 1 倍日 ATR）的只列在這裡、不推播；這根正在拉的照樣推播。只有 OKX、Bitget，保留 24 小時。最近一次：'+(P&&P.lastSlot?tpe(+P.lastSlot.split(':')[0])+' 第 '+P.lastSlot.split(':')[1]+' 分':'—')+'。實測第 15 分約 5 成、30 分約 7 成、45 分約 8 成收盤後真的成為正式爆量。</div>'+panel('',table('early',el,COLS.early(),P?'無':'還沒有盤中推算資料'),'grow')+'</div>'}
+  if(f.pane==='wake'){var W=D.dormant,wl=W?W.events.filter(function(e){return e.t>=Date.now()-w&&(!f.q||e.base.toLowerCase().indexOf(f.q.toLowerCase())>=0)&&(!f.watch||inWatch(e.base))}):[];CNT=[wl.length,W?W.events.length:0];
+    return '<div class="vs"><div class="meta">OKX、Bitget 都有的加密合約（不設流動性門檻）：前 10 天價格區間 ≤30%，剛收盤的 1H 成交額 ≥3 萬、收紅、離區間高點不到 5%，兩家同一小時一起「放量」（≥ 前 10 天中位數 10 倍）或「30天新高量」。同一檔 7 天通知一次，保留 14 天。最近一次：'+(W&&W.lastHour?tpe(W.lastHour):'—')+'。回測 7 天內漲 ≥50%：放量 7%、30天新高量 9%、隨機 3%；直接進場中位數為負，只當觀察。</div>'+panel('',table('wake',wl,COLS.wake(),W?'無':'還沒有沉睡甦醒資料'),'grow')+'</div>'}
   if(f.pane==='pre'){var pl=P?P.pre.filter(function(a){return a.t>=Date.now()-w&&ok(a)}):[];CNT=[pl.length,P?P.pre.length:0];
     return '<div class="vs"><div class="meta">整點收盤後，比前一根 ≥2x 或同時段 ≥2x、但還沒到正式爆量；同一檔 6 小時內只列一次，保留 12 小時。約 3 成正式爆量在前 1 小時會先出現預警，沒升級的多半是雜訊。</div>'+panel('',table('pre',pl,COLS.pre(),P?'無':'還沒有預警資料'),'grow')+'</div>'}
   CNT=[list.length,h.recent.length];
