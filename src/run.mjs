@@ -230,40 +230,47 @@ async function main() {
   }
   fs.writeFileSync(path.join(outDir, 'issue-body.md'), out);
 
-  /* ---------- 4H 金叉（Binance 現貨）：每根 4H K 收盤後一次；失敗只影響這一塊 ---------- */
-  let cross = null;
-  const crossBody = a['cross-body'] && fs.existsSync(a['cross-body']) ? fs.readFileSync(a['cross-body'], 'utf8') : '';
-  const cstate = a.cross === 'skip' ? null : CR.extractCross(crossBody);
-  if (a.cross !== 'skip' && !cstate) warnings.push('金叉清單 Issue 的狀態無法解析；為避免覆蓋，本輪略過金叉');
-  if (cstate) {
-    const cw = [];
-    try {
-      const r = await CS.scan(cstate, nowMs);
-      if (r.ran) {
-        cw.push(...r.warnings);
-        const res = CR.applyScan(cstate, r.found, r.latestT, nowMs);
-        cstate.active = cstate.active.map(it => (it.bars === 0 && r.barsOf(it.sym) ? CR.trackItem(it, r.barsOf(it.sym)) : it));
-        CR.sortActive(cstate);
-        cstate.failBar = null;
-        cross = { ...res, latestT: r.latestT, universe: r.universe };
+  /* ---------- 金叉（Binance 現貨）：4H 每根 4H K 收盤後一次、日線每根日線 K 收盤後一次（台灣 08:00 後第一輪）；失敗只影響這一塊 ---------- */
+  async function runCross(cfg, k) {
+    const is4h = cfg.tf === '4h', name = is4h ? '4H 金叉' : '日線金叉', issueName = is4h ? '金叉清單' : '金叉清單（日線）';
+    let cross = null;
+    const body = a[`${k}-body`] && fs.existsSync(a[`${k}-body`]) ? fs.readFileSync(a[`${k}-body`], 'utf8') : '';
+    const st = a[k] === 'skip' ? null : CR.extractCross(body, cfg);
+    if (a[k] !== 'skip' && !st) warnings.push(`${issueName} Issue 的狀態無法解析；為避免覆蓋，本輪略過${is4h ? '金叉' : name}`);
+    if (st) {
+      const cw = [];
+      try {
+        const r = await CS.scan(st, nowMs, cfg);
+        if (r.ran) {
+          cw.push(...r.warnings);
+          const res = CR.applyScan(st, r.found, r.latestT, nowMs, cfg);
+          st.active = st.active.map(it => (it.bars === 0 && r.barsOf(it.sym) ? CR.trackItem(it, r.barsOf(it.sym), cfg) : it));
+          CR.sortActive(st);
+          st.failBar = null;
+          cross = { ...res, latestT: r.latestT, universe: r.universe };
+        }
+      } catch (e) {
+        cw.push(`${is4h ? '金叉' : name}掃描失敗：${e.message}`);
+        const bar = CR.barOpen(nowMs, cfg);
+        if (st.failBar !== bar) { st.failBar = bar; cross = { failed: e.message, latestT: bar }; }
       }
-    } catch (e) {
-      cw.push(`金叉掃描失敗：${e.message}`);
-      const bar = CR.barOpen(nowMs);
-      if (cstate.failBar !== bar) { cstate.failBar = bar; cross = { failed: e.message, latestT: bar }; }
+      if (cross) {
+        const span = `${T.tpe(cross.latestT)}–${T.tpe(cross.latestT + cfg.barMs).slice(is4h ? 11 : 5)}`;
+        const cnote = cross.failed
+          ? `本輪掃描失敗（${cross.failed}），下一個整點重試`
+          : `最近一次檢查：${span} 台灣時間這根 ${cfg.label} K；${cross.universe} 檔，A 級 ${cross.newA.length}、B 級 ${cross.newB.length}`;
+        fs.writeFileSync(path.join(outDir, `${k}-body.md`), CR.embedCross(T.render(CR.crossMarkdown(st, { nowMs, warnings: cw, note: cnote }, cfg), 'md'), st, cfg));
+        const cm = [];
+        if (cross.newA?.length) cm.push(T.render(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, '', cfg), 'md').replace(/\n/g, '  \n'));
+        if (cross.closed?.length) cm.push(`結算 ${cross.closed.length} 筆：${cross.closed.map(x => `${x.base} ${x.exitRet >= 0 ? '+' : ''}${x.exitRet.toFixed(1)}%`).join('、')}`);
+        if (cm.length) fs.writeFileSync(path.join(outDir, `${k}-comment.md`), `## ${name} ${T.tpe(nowMs)} 台灣時間\n\n${cm.join('\n\n')}`);
+      }
+      cw.forEach(w => console.log(`${k} warning:`, w));
     }
-    if (cross) {
-      const cnote = cross.failed
-        ? `本輪掃描失敗（${cross.failed}），下一個整點重試`
-        : `最近一次檢查：${T.tpe(cross.latestT)}–${T.tpe(cross.latestT + 4 * HOUR).slice(11)} 台灣時間這根 4H K；${cross.universe} 檔，A 級 ${cross.newA.length}、B 級 ${cross.newB.length}`;
-      fs.writeFileSync(path.join(outDir, 'cross-body.md'), CR.embedCross(T.render(CR.crossMarkdown(cstate, { nowMs, warnings: cw, note: cnote }), 'md'), cstate));
-      const cm = [];
-      if (cross.newA?.length) cm.push(T.render(CR.crossAlertText(cross.newA, cross.newB, cross.latestT), 'md').replace(/\n/g, '  \n'));
-      if (cross.closed?.length) cm.push(`結算 ${cross.closed.length} 筆：${cross.closed.map(x => `${x.base} ${x.exitRet >= 0 ? '+' : ''}${x.exitRet.toFixed(1)}%`).join('、')}`);
-      if (cm.length) fs.writeFileSync(path.join(outDir, 'cross-comment.md'), `## 4H 金叉 ${T.tpe(nowMs)} 台灣時間\n\n${cm.join('\n\n')}`);
-    }
-    cw.forEach(w => console.log('cross warning:', w));
+    return { cross, cstate: st };
   }
+  const { cross, cstate } = await runCross(CR.CROSS, 'cross');
+  const { cross: crossD, cstate: dstateD } = await runCross(CR.CROSS_D, 'crossd');
 
   /* ---------- 盤中爆量：整點收盤後判斷（正式爆量＋連續放量；預警寫「盤中預警」Issue） ---------- */
   let halerts = [], hpre = [];
@@ -368,7 +375,7 @@ async function main() {
   let snap = null;
   if (a['snapshot'] !== 'skip') {
     try {
-      snap = await SN.take(SN.needOf({ short: state, layout: lstate, hourly: hstate, cross: cstate }), Date.now());
+      snap = await SN.take(SN.needOf({ short: state, layout: lstate, hourly: hstate, cross: cstate, crossD: dstateD }), Date.now());
       fs.writeFileSync(path.join(outDir, 'snapshot-body.md'), SN.embedSnapshot(SN.snapshotMarkdown(snap), snap));
       snap.warnings.forEach(w => console.log('snapshot warning:', w));
     } catch (e) { console.log('snapshot warning:', e.message); }
@@ -387,6 +394,8 @@ async function main() {
   if (rmsg) msgs.push(rmsg);
   if (cross?.newA?.length) msgs.push(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || ''));
   if (cross?.failed) msgs.push(`訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次`);
+  if (crossD?.newA?.length) msgs.push(CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D));
+  if (crossD?.failed) msgs.push(`訊號掃描台｜日線金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${crossD.failed}\n下一個整點自動重試；同一根日線 K 只通知一次`);
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
   if (dailyMsg) msgs.push(dailyMsg);
   if (layout) msgs.push(Lay.layoutDailyText(layout.added, layout.events, lstate) + (a['layout-url'] ? `\n${a['layout-url']}` : ''));
@@ -415,6 +424,7 @@ async function main() {
     `snapshot=${snap ? `market=${snap.market.length} bitget=${Object.keys(snap.px.bitget).length} binance=${Object.keys(snap.px.binance).length}` : 'skip'}`,
     `sweep=${sweep ? `targets=${sweep.n} events=${sweep.events} added=${sweep.added}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
+    `crossD=${crossD ? (crossD.failed ? 'failed' : `${T.tpe(crossD.latestT)} A=${crossD.newA.length} B=${crossD.newB.length} active=${dstateD.active.length}`) : 'skip'}`,
     `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} dormant=${dstats ? `${dwake.length}/${dstats.dormant}/${dstats.scanned} bf=${dstats.backfilled}` : 'skip'} rate=${rstats ? `${rspikes.length}/${rstate.n} bf=${rstats.backfilled}` : 'skip'} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');
   console.log(summary);

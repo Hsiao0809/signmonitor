@@ -5,6 +5,7 @@ name: Monitor
 # - 盤中爆量：OKX／Bitget／Bybit 三家 1H 成交額異常
 # - 短線清單：補處理所有新收盤的 4H K（觸發、T1、停損、T2、逾時）
 # - 4H 金叉：Binance 現貨，每根 4H K 收盤後（台灣 00、04、08、12、16、20 點）判斷一次
+# - 日線金叉：同上資料源與 EMA20／SMA30，每根日線 K 收盤後（台灣 08:00 後第一輪）判斷一次，獨立 Issue「金叉清單（日線）」
 # - 掃流動性：短線／布局／自選標的，每根 4H K 收盤後標記一次（只在網頁，不推播）
 # - 借幣利率：OKX 各幣槓桿借幣利率比 7 天中位數暴增就推播（每小時一次）
 # - 每日掃描：台灣時間 09:00 後當天第一輪（布局清單等 Bybit 成交檔 09:12 公布後才跑）
@@ -88,6 +89,7 @@ jobs:
             await ensure("自選標的", "watch-body.md", "watch_",
               "# 自選標的\n\n由 signmonitor 網頁管理；也可以直接編輯下面兩行標記之間的內容，一行一個代號（例如 APP、HYPE）。\n\n<!-- WATCHLIST -->\n<!-- /WATCHLIST -->\n");
             await ensure("金叉清單", "cross-body.md", "cross_");
+            await ensure("金叉清單（日線）", "crossd-body.md", "crossd_");
             await ensure("行情快照", "snapshot-body.md", "snapshot_");
             await ensure("掃流動性", "sweep-body.md", "sweep_");
             await ensure("量增價平", "quiet-body.md", "quiet_");
@@ -127,15 +129,16 @@ jobs:
           LAYOUT_URL: ${{ steps.issue.outputs.layout_url }}
           HOURLY_URL: ${{ steps.issue.outputs.hourly_url }}
           CROSS_URL: ${{ steps.issue.outputs.cross_url }}
+          CROSSD_URL: ${{ steps.issue.outputs.crossd_url }}
           QUIET_URL: ${{ steps.issue.outputs.quiet_url }}
           PRE_URL: ${{ steps.issue.outputs.pre_url }}
           DORMANT_URL: ${{ steps.issue.outputs.dormant_url }}
           RATE_URL: ${{ steps.issue.outputs.rate_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md --dormant-body dormant-body.md --rate-body rate-body.md
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --crossd-body crossd-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md --dormant-body dormant-body.md --rate-body rate-body.md
           --bybit-cache .cache/bybit-daily.json --dormant-cache .cache/dormant.json --rate-cache .cache/rates.json --oi-dir data/oi --rate-dir data/rates --out out
-          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL" --dormant-url "$DORMANT_URL" --rate-url "$RATE_URL"
+          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --crossd-url "$CROSSD_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL" --dormant-url "$DORMANT_URL" --rate-url "$RATE_URL"
 
       - name: Run intrahour
         if: ${{ inputs.mode == 'intrahour' }}
@@ -173,6 +176,7 @@ jobs:
           LAYOUT_NUMBER: ${{ steps.issue.outputs.layout_number }}
           HOURLY_NUMBER: ${{ steps.issue.outputs.hourly_number }}
           CROSS_NUMBER: ${{ steps.issue.outputs.cross_number }}
+          CROSSD_NUMBER: ${{ steps.issue.outputs.crossd_number }}
           SNAPSHOT_NUMBER: ${{ steps.issue.outputs.snapshot_number }}
           SWEEP_NUMBER: ${{ steps.issue.outputs.sweep_number }}
           QUIET_NUMBER: ${{ steps.issue.outputs.quiet_number }}
@@ -197,6 +201,7 @@ jobs:
             await put("LAYOUT_NUMBER", "out/layout-body.md", "out/layout-comment.md");
             await put("HOURLY_NUMBER", "out/hourly-body.md", "out/hourly-comment.md");
             await put("CROSS_NUMBER", "out/cross-body.md", "out/cross-comment.md");
+            await put("CROSSD_NUMBER", "out/crossd-body.md", "out/crossd-comment.md");
             await put("SNAPSHOT_NUMBER", "out/snapshot-body.md", "out/none.md");
             await put("SWEEP_NUMBER", "out/sweep-body.md", "out/none.md");
             await put("QUIET_NUMBER", "out/quiet-body.md", "out/quiet-comment.md");

@@ -11,7 +11,10 @@ import zlib from 'node:zlib';
 import { tpe, fmtP, link } from './tracker.mjs';
 import { weekendClosed } from './hourly.mjs';
 
+const H4 = 4 * 3600e3, D1 = 24 * 3600e3;
+
 export const CROSS = {
+  tf: '4h', barMs: H4, label: '4H', tv: '240', tag: 'CROSS_STATE',   // 時間週期：Binance interval、一根多長、顯示名稱、TradingView interval、Issue 狀態標記
   fast: 20, slow: 30, trend: 200, volLen: 20,
   minVolX: 1.5,            // A 級：金叉當根成交額 ≥ 前 20 根平均幾倍
   minQv24h: 5e5,           // 24h 成交額下限（USDT）
@@ -27,8 +30,12 @@ export const CROSS = {
     'USDE', 'USDEB', 'EUR', 'EURI', 'AEUR', 'EURC', 'WBTC', 'WBETH', 'BETH', 'PAXG', 'XAUT']
 };
 
-const H4 = 4 * 3600e3;
-export const barOpen = nowMs => Math.floor(nowMs / H4) * H4 - H4;   /* 最近一根已收盤 4H K 的開始時間 */
+/* 日線金叉：同樣 EMA20／SMA30。日線 K 以 UTC 00:00 開收（台灣 08:00 收盤）。
+   A 級條件沿用 4H（收盤 > SMA200 且量 ≥ 前 20 日平均 1.5 倍）；上市不足 200 日算不出 SMA200 → 歸 B 級。
+   追蹤 30 根日線；B 級只在網頁保留 7 天。日線沒有回測，成績事後累積在 Issue「金叉清單（日線）」。 */
+export const CROSS_D = { ...CROSS, tf: '1d', barMs: D1, label: '日線', tv: 'D', tag: 'CROSSD_STATE', trackBars: 30, keepBHours: 168 };
+
+export const barOpen = (nowMs, cfg = CROSS) => Math.floor(nowMs / cfg.barMs) * cfg.barMs - cfg.barMs;   /* 最近一根已收盤 K 的開始時間 */
 
 export function emptyCross() { return { version: 1, lastBar: null, failBar: null, universe: 0, active: [], recentB: [], closed: [] }; }
 
@@ -120,13 +127,13 @@ export function applyScan(state, found, latestT, nowMs, cfg = CROSS) {
   const newA = [], newB = [];
   for (const c of found) {
     if (known.has(c.key)) continue;
-    const item = { ...c, late: Math.round((latestT - c.t) / H4), closedMkt: c.stock && weekendClosed(c.t + H4, 'stock') };
+    const item = { ...c, late: Math.round((latestT - c.t) / cfg.barMs), closedMkt: c.stock && weekendClosed(c.t + cfg.barMs, 'stock') };
     if (c.grade === 'A') { newA.push(item); state.active.push({ ...item, bars: 0, last: c.close, lastT: c.t, ret: 0, mfe: 0, mae: 0, still: true, deadT: null, deadRet: null }); }
     else newB.push(item);
   }
   const bKeys = new Set(state.recentB.map(x => x.key));
   state.recentB = [...newB.filter(x => !bKeys.has(x.key)), ...state.recentB]
-    .filter(x => nowMs - (x.t + H4) < cfg.keepBHours * 3600e3).slice(0, 300);
+    .filter(x => nowMs - (x.t + cfg.barMs) < cfg.keepBHours * 3600e3).slice(0, 300);
   const closed = [];
   state.active = state.active.filter(it => {
     if ((it.bars || 0) < cfg.trackBars) return true;
@@ -160,30 +167,32 @@ export function crossStats(closed) {
 }
 
 /* ---------------- 文字 ---------------- */
-export const binanceTv = sym => `https://www.tradingview.com/chart/?symbol=${encodeURIComponent('BINANCE:' + sym)}&interval=240`;
+export const binanceTv = (sym, cfg = CROSS) => `https://www.tradingview.com/chart/?symbol=${encodeURIComponent('BINANCE:' + sym)}&interval=${cfg.tv}`;
 const money = v => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : `${(v / 1e3).toFixed(0)}K`;
 const sg = (v, d = 1) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
-const barLabel = t => `${tpe(t).slice(5, 16)}–${tpe(t + H4).slice(11, 16)}`;
+const barLabel = (t, cfg = CROSS) => cfg.barMs >= D1 ? `${tpe(t).slice(5, 16)}–${tpe(t + cfg.barMs).slice(5, 16)}` : `${tpe(t).slice(5, 16)}–${tpe(t + cfg.barMs).slice(11, 16)}`;
+const lab = cfg => cfg.tf === '4h' ? `${cfg.label} ` : cfg.label;   /* 4H 與中文之間留空格，日線不留 */
 const tags = x => `${x.stock ? '［代幣化股］' : ''}${x.closedMkt ? '【週末休市】' : ''}${x.late ? `（延遲 ${x.late} 根）` : ''}`;
 
 export function crossAlertText(newA, newB, latestT, url = '', cfg = CROSS) {
   if (!newA.length) return '';
-  const L = [`【4H 金叉】${barLabel(latestT)} 台灣時間收盤（A 級 ${newA.length} 檔）`];
+  const L = [`【${lab(cfg)}金叉】${barLabel(latestT, cfg)} 台灣時間收盤（A 級 ${newA.length} 檔）`];
   newA.slice(0, cfg.maxLines).forEach(x => {
-    L.push(`${link(x.base, binanceTv(x.sym))}${tags(x)} 收 ${fmtP(x.close)}｜量 ${x.volx}x｜距 SMA200 ${sg(x.px200)}`);
+    L.push(`${link(x.base, binanceTv(x.sym, cfg))}${tags(x)} 收 ${fmtP(x.close)}｜量 ${x.volx}x｜距 SMA200 ${sg(x.px200)}`);
     L.push(`  上穿 ${sg(x.spread, 2)}｜近 ${cfg.stopBars} 根低點 ${fmtP(x.stopPx)}（-${x.stopPct.toFixed(1)}%）｜24h 成交額 ${money(x.qv24h)}`);
   });
   if (newA.length > cfg.maxLines) L.push(`另有 ${newA.length - cfg.maxLines} 檔，見清單頁`);
   if (newA.some(x => x.stock)) L.push('［代幣化股］回測表現為負，只供參考');
-  L.push(`出場參考：4H 死叉（EMA20 跌回 SMA30 下方）。${newB.length ? `另有 ${newB.length} 檔 B 級只在網頁顯示。` : ''}`);
+  if (cfg.tf === '1d') L.push('日線金叉尚無回測，成績上線後才累積，只供參考。');
+  L.push(`出場參考：${lab(cfg)}死叉（EMA20 跌回 SMA30 下方）。${newB.length ? `另有 ${newB.length} 檔 B 級只在網頁顯示。` : ''}`);
   if (url) L.push(url);
   return L.join('\n');
 }
 
 export function crossMarkdown(state, { nowMs, warnings = [], note = '' }, cfg = CROSS) {
-  const L = [`# 4H 金叉｜更新 ${tpe(nowMs)} 台灣時間`, ''];
-  L.push(`Binance 現貨 USDT、24h 成交額 ≥ ${cfg.minQv24h / 1e4} 萬 USDT，排除穩定幣、包裝幣、黃金代幣。剛收盤的 4H K 出現 EMA${cfg.fast} 上穿 SMA${cfg.slow}：`);
-  L.push(`- **A 級**（推播、追蹤 ${cfg.trackBars} 根）：收盤 > SMA${cfg.trend}，且成交額 ≥ 前 ${cfg.volLen} 根平均 ${cfg.minVolX} 倍`);
+  const L = [`# ${lab(cfg)}金叉｜更新 ${tpe(nowMs)} 台灣時間`, ''];
+  L.push(`Binance 現貨 USDT、24h 成交額 ≥ ${cfg.minQv24h / 1e4} 萬 USDT，排除穩定幣、包裝幣、黃金代幣。剛收盤的 ${cfg.label} K 出現 EMA${cfg.fast} 上穿 SMA${cfg.slow}：`);
+  L.push(`- **A 級**（推播、追蹤 ${cfg.trackBars} 根${cfg.tf === '1d' ? '日線' : ''}）：收盤 > SMA${cfg.trend}，且成交額 ≥ 前 ${cfg.volLen} 根平均 ${cfg.minVolX} 倍`);
   L.push(`- **B 級**（只列出，保留 ${cfg.keepBHours} 小時）：其他新金叉`);
   if (note) { L.push(''); L.push(note); }
   L.push('');
@@ -191,14 +200,14 @@ export function crossMarkdown(state, { nowMs, warnings = [], note = '' }, cfg = 
   if (state.active.length) {
     L.push('| 金叉 K | 標的 | 金叉收盤 | 現價 | 報酬 | 最大漲／跌 | 狀態 | 量 | 距SMA200 | 根數 |');
     L.push('|---|---|---|---|---|---|---|---|---|---|');
-    state.active.forEach(x => L.push(`| ${tpe(x.t).slice(5, 16)} | ${link(x.base, binanceTv(x.sym))}${x.stock ? '［代幣化股］' : ''} | ${fmtP(x.close)} | ${fmtP(x.last)} | ${sg(x.ret)} | ${sg(x.mfe)}／${sg(x.mae)} | ${x.deadT ? `已死叉（${sg(x.deadRet)}）` : '仍成立'} | ${x.volx}x | ${sg(x.px200)} | ${x.bars}/${cfg.trackBars} |`));
+    state.active.forEach(x => L.push(`| ${tpe(x.t).slice(5, 16)} | ${link(x.base, binanceTv(x.sym, cfg))}${x.stock ? '［代幣化股］' : ''} | ${fmtP(x.close)} | ${fmtP(x.last)} | ${sg(x.ret)} | ${sg(x.mfe)}／${sg(x.mae)} | ${x.deadT ? `已死叉（${sg(x.deadRet)}）` : '仍成立'} | ${x.volx}x | ${sg(x.px200)} | ${x.bars}/${cfg.trackBars} |`));
   } else L.push('無');
   L.push('');
   L.push(`## B 級（最近 ${cfg.keepBHours} 小時，${state.recentB.length}）`);
   if (state.recentB.length) {
     L.push('| 金叉 K | 標的 | 收盤 | 量 | 距SMA200 | 原因 |');
     L.push('|---|---|---|---|---|---|');
-    state.recentB.slice(0, 150).forEach(x => L.push(`| ${tpe(x.t).slice(5, 16)} | ${link(x.base, binanceTv(x.sym))}${x.stock ? '［代幣化股］' : ''} | ${fmtP(x.close)} | ${x.volx == null ? '—' : x.volx + 'x'} | ${sg(x.px200)} | ${x.reasons.join('、')} |`));
+    state.recentB.slice(0, 150).forEach(x => L.push(`| ${tpe(x.t).slice(5, 16)} | ${link(x.base, binanceTv(x.sym, cfg))}${x.stock ? '［代幣化股］' : ''} | ${fmtP(x.close)} | ${x.volx == null ? '—' : x.volx + 'x'} | ${sg(x.px200)} | ${x.reasons.join('、')} |`));
   } else L.push('無');
   L.push('');
   const st = crossStats(state.closed);
@@ -208,7 +217,7 @@ export function crossMarkdown(state, { nowMs, warnings = [], note = '' }, cfg = 
     L.push('');
     L.push('| 金叉 K | 標的 | 出場報酬 | 最大漲／跌 |');
     L.push('|---|---|---|---|');
-    state.closed.slice(-30).reverse().forEach(x => L.push(`| ${tpe(x.t).slice(5, 16)} | ${link(x.base, binanceTv(x.sym))} | ${sg(x.exitRet)}${x.deadT ? '（死叉）' : ''} | ${sg(x.mfe)}／${sg(x.mae)} |`));
+    state.closed.slice(-30).reverse().forEach(x => L.push(`| ${tpe(x.t).slice(5, 16)} | ${link(x.base, binanceTv(x.sym, cfg))} | ${sg(x.exitRet)}${x.deadT ? '（死叉）' : ''} | ${sg(x.mfe)}／${sg(x.mae)} |`));
   } else L.push('尚無');
   if (warnings.length) { L.push(''); L.push(`## 資料警告（${warnings.length}）`); warnings.slice(0, 20).forEach(w => L.push(`- ${w}`)); }
   L.push('');
@@ -216,13 +225,13 @@ export function crossMarkdown(state, { nowMs, warnings = [], note = '' }, cfg = 
   return L.join('\n');
 }
 
-const MA = '<!-- CROSS_STATE', MB = 'CROSS_STATE -->';
 const compact = s => JSON.parse(JSON.stringify(s, (k, v) => typeof v === 'number' && !Number.isInteger(v) ? +v.toPrecision(7) : v));
-export function embedCross(md, state) {
-  return `${md}\n\n${MA}\n${zlib.gzipSync(Buffer.from(JSON.stringify(compact(state)))).toString('base64')}\n${MB}\n`;
+export function embedCross(md, state, cfg = CROSS) {
+  return `${md}\n\n<!-- ${cfg.tag}\n${zlib.gzipSync(Buffer.from(JSON.stringify(compact(state)))).toString('base64')}\n${cfg.tag} -->\n`;
 }
-export function extractCross(body) {
+export function extractCross(body, cfg = CROSS) {
   if (!body) return emptyCross();
+  const MA = `<!-- ${cfg.tag}`, MB = `${cfg.tag} -->`;
   const a = body.indexOf(MA), b = body.indexOf(MB);
   if (a < 0 || b < 0) return emptyCross();
   try { return { ...emptyCross(), ...JSON.parse(zlib.gunzipSync(Buffer.from(body.slice(a + MA.length, b).trim(), 'base64')).toString('utf8')) }; }
