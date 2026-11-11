@@ -263,10 +263,38 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 沒設定 Secrets 時自動略過，網頁要手動把 `cloudflare/trigger-worker.js` 貼到 Cloudflare。部署保留 Cloudflare 上已設定的變數與 Secret（`keep_vars = true`），Cron 是每小時第 50 分（完整一輪）與第 15、30、45 分（盤中推算）。手動貼的話，Cloudflare → Workers & Pages → 這個 Worker → Settings → Trigger Events 也要加上 `15,30,45 * * * *`。
 
+## Telegram 話題分流
+
+通知可以分別送進同一個 Telegram 群組的不同「話題」（Topics）。每種通知各一個話題：
+
+| 類型 | 話題名稱 | 內容 |
+|---|---|---|
+| `quiet` | 量增價平 | 量增價平提醒 |
+| `hourly` | 盤中爆量 | 整點正式爆量、連續放量 |
+| `pre` | 盤中預警 | 整點預警摘要、第 15／30／45 分盤中推算 |
+| `dormant` | 沉睡甦醒 | 沉睡甦醒 |
+| `rate` | 借幣利率 | 借幣利率暴增 |
+| `cross` | 4H 金叉 | 4H 金叉 A 級 |
+| `crossd` | 日線金叉 | 日線金叉 A 級 |
+| `daily` | 每日掃描 | 每日掃描報告 |
+| `layout` | 布局清單 | 布局清單新增與事件 |
+| `events` | 狀態變化 | 短線清單每小時狀態變化 |
+| `alert` | 系統通知 | 掃描失敗（金叉、日線金叉、每日掃描、布局清單） |
+
+**設定（一次）**：
+1. 群組要是「超級群組」並在群組設定開啟「話題」；把 bot 設成管理員，權限要有「管理話題」。
+2. `TELEGRAM_CHAT_ID` 填這個群組的 id。
+3. Actions → 「Telegram topics」→ Run workflow：自動替每種通知建立話題，並把代號 commit 到 `config/telegram-topics.json`。已有代號的不會重複建立；中途失敗再跑一次會補建缺的。
+
+**之後調整**：直接改 `config/telegram-topics.json`。想把幾種通知併進同一個話題，填同一個代號；把某一類的代號刪掉，那一類就送到群組預設的 General。代號也可以用環境變數 `TELEGRAM_TOPICS`（同格式的 JSON）覆蓋。
+
+**不會漏發**：話題被刪或代號填錯時，該則自動改送 General（發送紀錄會標 `fellBack`，Actions 日誌也會提示）；HTML 格式被拒時改用純文字，仍送進同一個話題。發送紀錄 `logs/telegram/` 多一個 `topic` 欄位（類型），不含代號與 chat id。
+
 ## 存放位置
 
 - Issue「短線清單」「布局清單」「盤中爆量」「盤中預警」「沉睡甦醒」「借幣利率」「金叉清單」「金叉清單（日線）」「行情快照」「自選標的」：本文是最新清單與成績，狀態以壓縮形式存在本文最後的隱藏註解，不要手動刪除。每日報告與狀態變化留在留言。
-- Telegram：需要在 Settings → Secrets and variables → Actions 設定 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。沒設定時只寫 Issue。
+- Telegram：需要在 Settings → Secrets and variables → Actions 設定 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。沒設定時只寫 Issue。分流到群組話題見下一節。
+- `config/telegram-topics.json`：各類通知的 Telegram 話題代號（不是機密，可公開）。
 
 ## 檔案
 
@@ -284,6 +312,7 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 | `src/quiet.mjs` | 量增價平（標記、通知、24h／72h 成績） |
 | `src/snapshot.mjs` | 行情快照（給網頁：BTC／ETH 4H 狀態、Binance／Bitget 價格） |
 | `src/venues.mjs` | OKX、Bitget、Bybit 日線／1H 轉接器、Bybit WebSocket |
+| `src/telegram-topics.mjs`、`src/notify.mjs`、`src/setup-topics.mjs` | Telegram 話題分流、發送、一次性建立話題 |
 | `src/run.mjs` | 每輪執行入口 |
 | `src/notify.mjs` | Telegram 通知 |
 | `src/probe.mjs` | 連線檢查：`node src/probe.mjs` |

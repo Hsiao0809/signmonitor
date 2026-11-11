@@ -4,7 +4,7 @@
   "type": "module",
   "description": "訊號掃描台的雲端自動化：每日爆量掃描、短線觸發追蹤、OKX／Bitget／Bybit 布局清單、Binance 4H 金叉",
   "scripts": {
-    "test": "node --test test/tracker.test.mjs test/layout.test.mjs test/hourly.test.mjs test/watch.test.mjs test/cross.test.mjs test/quiet.test.mjs test/sweep.test.mjs test/early.test.mjs test/dormant.test.mjs test/rate.test.mjs",
+    "test": "node --test test/tracker.test.mjs test/layout.test.mjs test/hourly.test.mjs test/watch.test.mjs test/cross.test.mjs test/quiet.test.mjs test/sweep.test.mjs test/early.test.mjs test/dormant.test.mjs test/rate.test.mjs test/telegram.test.mjs",
     "probe": "node src/probe.mjs",
     "run": "node src/run.mjs --out out --daily force"
   }

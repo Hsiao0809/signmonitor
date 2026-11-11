@@ -5,6 +5,7 @@
    OKX、Bitget 進行中的 1H K：已成交量換算整根量，達正式爆量門檻就推播。
    只寫「盤中預警」Issue；「盤中爆量」Issue 只讀（取正式爆量的去重紀錄）。
    ============================================================ */
+import { fileName } from './telegram-topics.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as V from './venues.mjs';
@@ -57,7 +58,7 @@ async function main() {
   fs.writeFileSync(path.join(outDir, 'pre-body.md'), E.preBody(pstate, { nowMs, warnings, note }, t => render(t, 'md')));
   const pushed = alerts.filter(x => !x.moved);
   const msg = E.earlyAlertText([...HR.mergeByBase(pushed), ...alerts.filter(x => x.moved)], T, minute, a['pre-url'] || '');
-  if (msg) fs.writeFileSync(path.join(outDir, 'telegram-1.txt'), render(msg, 'html'));
+  if (msg) fs.writeFileSync(path.join(outDir, fileName(1, 'pre')), render(msg, 'html'));
   console.log(`intrahour=${tpe(T)}+${minute}m entries=${entries.length} alerts=${alerts.length} pushed=${pushed.length}`);
   warnings.forEach(w => console.log('warning:', w));
 }

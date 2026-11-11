@@ -1,0 +1,43 @@
+name: Telegram topics
+
+# 一次性設定：在 Telegram 論壇群組為每種通知建立自己的話題，並把話題代號存到 config/telegram-topics.json。
+# 條件：TELEGRAM_CHAT_ID 是開啟「話題」的群組，bot 是管理員且有「管理話題」權限。
+# 已經有代號的類型不會重複建立；之後想把幾種通知併進同一個話題，直接改設定檔的代號即可。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: signmonitor
+  cancel-in-progress: false
+
+jobs:
+  topics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Create topics
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node src/setup-topics.mjs
+      - name: Save topic ids
+        if: ${{ always() }}
+        run: |
+          if [ ! -f config/telegram-topics.json ]; then echo "沒有設定檔可存"; exit 0; fi
+          git add config/telegram-topics.json
+          if git diff --cached --quiet; then echo "話題代號沒有變動"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "config: Telegram 話題代號"
+          for i in 1 2 3; do
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep 5
+          done
+          exit 1

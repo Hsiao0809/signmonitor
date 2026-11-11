@@ -27,6 +27,7 @@ import * as RTS from './rate-scan.mjs';
 import { parseWatch, applyAuto, AUTO_DAYS } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
+import { groupByTopic, fileName } from './telegram-topics.mjs';
 import * as SN from './snapshot.mjs';
 import * as Q from './quiet.mjs';
 import { getJSON } from './venues.mjs';
@@ -383,29 +384,33 @@ async function main() {
 
   const msgs = [];
   /* 量增價平另發一則，排在最前面 */
-  if (qadded.length) msgs.push(Q.quietAlertText(qadded, nowMs, a['quiet-url'] || ''));
+  if (qadded.length) msgs.push({ k: 'quiet', text: Q.quietAlertText(qadded, nowMs, a['quiet-url'] || '') });
   const hmsg = HR.hourlyAlertText(halerts, targetHour, [], a['hourly-url'] || '');
-  if (hmsg) msgs.push(hmsg);
+  if (hmsg) msgs.push({ k: 'hourly', text: hmsg });
   const pmsg = EA.preAlertText(hpre, targetHour, a['pre-url'] || '');
-  if (pmsg) msgs.push(pmsg);
+  if (pmsg) msgs.push({ k: 'pre', text: pmsg });
   const dmsg = DM.wakeAlertText(dwake, targetHour, a['dormant-url'] || '');
-  if (dmsg) msgs.push(dmsg);
+  if (dmsg) msgs.push({ k: 'dormant', text: dmsg });
   const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '', RT.RATE, rauto, AUTO_DAYS);
-  if (rmsg) msgs.push(rmsg);
-  if (cross?.newA?.length) msgs.push(CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || ''));
-  if (cross?.failed) msgs.push(`訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次`);
-  if (crossD?.newA?.length) msgs.push(CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D));
-  if (crossD?.failed) msgs.push(`訊號掃描台｜日線金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${crossD.failed}\n下一個整點自動重試；同一根日線 K 只通知一次`);
+  if (rmsg) msgs.push({ k: 'rate', text: rmsg });
+  if (cross?.newA?.length) msgs.push({ k: 'cross', text: CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || '') });
+  if (cross?.failed) msgs.push({ k: 'alert', text: `訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次` });
+  if (crossD?.newA?.length) msgs.push({ k: 'crossd', text: CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D) });
+  if (crossD?.failed) msgs.push({ k: 'alert', text: `訊號掃描台｜日線金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${crossD.failed}\n下一個整點自動重試；同一根日線 K 只通知一次` });
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
-  if (dailyMsg) msgs.push(dailyMsg);
-  if (layout) msgs.push(Lay.layoutDailyText(layout.added, layout.events, lstate) + (a['layout-url'] ? `\n${a['layout-url']}` : ''));
+  if (dailyMsg) msgs.push({ k: 'daily', text: dailyMsg });
+  if (layout) msgs.push({ k: 'layout', text: Lay.layoutDailyText(layout.added, layout.events, lstate) + (a['layout-url'] ? `\n${a['layout-url']}` : '') });
   /* 只有真的失敗才發失敗通知；布局清單等 Bybit 成交檔是延後，不是失敗 */
   const failed = warnings.filter(w => w.startsWith('每日掃描失敗') || w.startsWith('布局清單掃描失敗'));
-  if (failed.length) msgs.push(`訊號掃描台｜掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${failed.join('\n')}`);
+  if (failed.length) msgs.push({ k: 'alert', text: `訊號掃描台｜掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${failed.join('\n')}` });
   const ev = T.hourlyText(events, daily ? '' : issueUrl, CFG);
-  if (ev) msgs.push(ev);
-  /* Telegram 以 HTML 格式發送，標的名稱可直接點開 TradingView；先切段再轉換，避免標籤被切斷 */
-  splitMessages(msgs.join('\n\n'), 3500).forEach((m, i) => fs.writeFileSync(path.join(outDir, `telegram-${i + 1}.txt`), T.render(m, 'html')));
+  if (ev) msgs.push({ k: 'events', text: ev });
+  /* Telegram 以 HTML 格式發送，標的名稱可直接點開 TradingView；先切段再轉換，避免標籤被切斷。
+     每種通知各自一個檔（telegram-<序號>-<類型>.txt），notify.mjs 依類型送進群組對應的話題 */
+  let tgN = 0;
+  for (const g of groupByTopic(msgs)) {
+    for (const m of splitMessages(g.text, 3500)) fs.writeFileSync(path.join(outDir, fileName(++tgN, g.k)), T.render(m, 'html'));
+  }
 
   const comment = [];
   const mdLines = t => T.render(t, 'md').replace(/\n/g, '  \n');
