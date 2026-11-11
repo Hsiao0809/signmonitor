@@ -1,0 +1,13 @@
+{
+  "quiet": 5,
+  "hourly": 6,
+  "pre": 7,
+  "dormant": 8,
+  "rate": 9,
+  "cross": 10,
+  "crossd": 11,
+  "daily": 12,
+  "layout": 13,
+  "events": 14,
+  "alert": 15
+}
