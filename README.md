@@ -317,6 +317,25 @@ Telegram 沒辦法搬動已發出的訊息，所以用發送紀錄 `logs/telegra
 - 靜音發送（不會震動）、每則前面標「【補發 月-日 時:分 台灣時間】」，紀錄是純文字所以沒有 TradingView 連結；限速約每 3.3 秒一則，遇到 429 會等 Telegram 指定的時間再試。
 - 補發完寫 `config/telegram-backfill.json`；再跑會拒絕，勾 `force` 才重跑。中途失敗不寫標記，訊息會說已補發幾則。
 
+## 訊號分級層（`src/tier.mjs`、`config/tier.json`）
+
+訊號太多看不完時，只動「Telegram 推不推、何時推」，偵測邏輯、去重、Issue 與網頁都不變。
+
+| 類型 | 分級 | 怎麼推 |
+|---|---|---|
+| 量增價平、盤中爆量、預警、沉睡甦醒、借幣利率 | A（早期型） | 單一命中就即時推，不靠共振、不設每日上限 |
+| 4H 金叉、日線金叉、做空候選轉弱 | B（確認型） | 不即時推，累積成每日摘要，每個話題各一則 |
+| 每日掃描、布局清單、狀態變化、系統通知 | 原樣 | 即時推 |
+| 共振 | 升級通知 | 同一檔 48 小時內「早期型」與「金叉（4H 或日線）」都出現，另推一則到「共振」話題（原本的通知照發，只升級不取代；做空候選方向相反，不參與；24 小時內同一檔不重複） |
+
+- **模式**：`config/tier.json` 的 `mode`，或環境變數 `TIER_MODE`。`legacy`（預設）＝推播完全照舊，只在 `logs/tier/` 記錄「若分級會怎麼發」；`tiered`＝依上表推播。改回舊版只要把 `mode` 改成 `legacy`。
+- **每日摘要時間**：`digestAfter`（預設台灣時間 19:30）。排程是每小時第 50 分啟動、等到整點才處理，所以實際是 19:30 之後的第一輪，約 20:00 送出。
+- **改單一類型**：`tiers` 欄位，例如 `{ "gainer": "A" }` 把做空候選轉弱改回即時推。
+- **保護**：依規則應即時推的訊息只要有一則沒出現在結果裡，或分級層出任何錯，該輪自動退回原本的推播（`logs/tier/` 會記錄原因）。
+- **狀態**：`data/tier/state.json`（近 72 小時訊號、待發摘要、共振冷卻），由 workflow 與推播紀錄一起 commit 回 repo。
+- **盤中推算**（第 15／30／45 分，`src/intrahour.mjs`）是獨立流程，本來就即時推，不經過分級層，也不計入共振的訊號紀錄。
+- 「共振」話題：Actions →「Telegram topics」→ Run workflow 會補建（已有的不重複）；沒建之前，共振通知（tiered 模式才會有）送到 General。
+
 ## 存放位置
 
 - Issue「短線清單」「布局清單」「盤中爆量」「盤中預警」「沉睡甦醒」「借幣利率」「做空候選」「金叉清單」「金叉清單（日線）」「行情快照」「自選標的」：本文是最新清單與成績，狀態以壓縮形式存在本文最後的隱藏註解，不要手動刪除。每日報告與狀態變化留在留言。
@@ -341,6 +360,7 @@ Telegram 沒辦法搬動已發出的訊息，所以用發送紀錄 `logs/telegra
 | `src/snapshot.mjs` | 行情快照（給網頁：BTC／ETH 4H 狀態、Binance／Bitget 價格） |
 | `src/venues.mjs` | OKX、Bitget、Bybit 日線／1H 轉接器、Bybit WebSocket |
 | `src/telegram-topics.mjs`、`src/notify.mjs`、`src/setup-topics.mjs`、`src/telegram-backfill.mjs` | Telegram 話題分流、發送、一次性建立話題、補發舊通知 |
+| `src/tier.mjs` | 訊號分級層：即時／每日摘要／共振，legacy 與 tiered 模式 |
 | `src/run.mjs` | 每輪執行入口 |
 | `src/notify.mjs` | Telegram 通知 |
 | `src/probe.mjs` | 連線檢查：`node src/probe.mjs` |

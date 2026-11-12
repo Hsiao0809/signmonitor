@@ -235,12 +235,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node src/notify.mjs out
 
-      # 把這輪發出的 Telegram 訊息（logs/telegram/）、OI 紀錄（data/oi/）、借幣利率紀錄（data/rates/）存回 repo，失敗不影響監控本身。
+      # 把這輪發出的 Telegram 訊息（logs/telegram/）、OI 紀錄（data/oi/）、借幣利率紀錄（data/rates/）、分級層紀錄與狀態（logs/tier/、data/tier/）存回 repo，失敗不影響監控本身。
       - name: Save Telegram log
         if: ${{ always() }}
         continue-on-error: true
         run: |
-          for d in logs/telegram data/oi data/rates; do if [ -d "$d" ]; then git add "$d"; fi; done
+          for d in logs/telegram logs/tier data/oi data/rates data/tier; do if [ -d "$d" ]; then git add "$d"; fi; done
           if git diff --cached --quiet; then echo "沒有新的發送紀錄"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
