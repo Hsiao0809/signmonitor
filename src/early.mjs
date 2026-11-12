@@ -172,11 +172,11 @@ const sx = v => (v == null ? '—' : `${v}x`);
 const pcs = v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 const PRE_C = { A: '比前一根', B: '同時段', AB: '前一根＋同時段' };
 
-export function preAlertText(added, T, url = '', ecfg = EARLY) {
+export function preAlertText(added, T, url = '', ecfg = EARLY, nth = null) {
   if (!added.length) return '';
   const L = [`【預警】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${added.length} 檔，比前一根 ≥2x 或同時段 ≥2x，還沒到正式爆量）`];
   added.slice(0, ecfg.preMaxLines).forEach(p => L.push(
-    `${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}｜價 ${p.price ? fmtP(p.price) : '—'}`));
+    `${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}｜價 ${p.price ? fmtP(p.price) : '—'}${nth ? `｜今日第 ${nth(p.base)} 次` : ''}`));
   if (added.length > ecfg.preMaxLines) L.push(`另有 ${added.length - ecfg.preMaxLines} 檔，見網頁「盤中爆量」分頁`);
   L.push('約 3 成正式爆量在前 1 小時會先出現預警；沒升級的多半是雜訊');
   if (url) L.push(url);

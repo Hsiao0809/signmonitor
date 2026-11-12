@@ -7,6 +7,7 @@
    模式（config/tier.json 的 mode，或環境變數 TIER_MODE）：
      legacy：推播完全照舊；只在背景記錄「若分級會怎麼發」到 logs/tier/，供並行驗證。預設值。
      tiered：依上面規則推播。
+   另有 nthCounter：每個幣後面標「今日第 N 次」，由 config 的 showNth 控制，與 mode 無關。
    任何錯誤一律退回原本的訊息清單，不影響推播。 */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,6 +24,7 @@ export const DEFAULTS = {
   resonanceHours: 48,
   resonanceCoolHours: 24,
   keepHours: 72,
+  showNth: true,                 /* 每個幣後面標「今日第 N 次」（獨立於 mode，legacy 也有效）；false＝不標 */
   tiers: {}                      /* 例：{ "gainer": "A" } 把某個類型改回即時推 */
 };
 
@@ -68,6 +70,31 @@ export function loadState(dir) {
 export function saveState(dir, st) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(st));
+}
+
+/**
+ * 「今日第 N 次」：同一個幣、同一類訊號，台灣時間當天從 0 點起第幾次被推（含這一次）。
+ * 數的是 state.json 裡前幾輪的紀錄（每輪每個幣每類只算一次），所以只算主排程這一條，
+ * 第 15／30／45 分盤中推算不計入；上線前（分級層 2026-11-12 11:26 合併）的通知也不在紀錄內。
+ * 回傳 k => (base => N)；showNth 關閉或狀態讀不到就回傳 null（呼叫端不標）。
+ */
+export function nthCounter(nowMs, opts = {}) {
+  try {
+    const cfg = opts.cfg || loadConfig(opts.configFile);
+    if (!cfg.showNth) return null;
+    const st = loadState(opts.dir || 'data/tier');
+    const day = tpeParts(nowMs).day, runs = new Map();
+    for (const s of st.signals) {
+      if (!(s.t < nowMs) || tpeParts(s.t).day !== day) continue;
+      const key = `${s.k}|${s.base}`;
+      if (!runs.has(key)) runs.set(key, new Set());
+      runs.get(key).add(s.t);
+    }
+    return k => base => (runs.get(`${k}|${normBase(base)}`)?.size || 0) + 1;
+  } catch (e) {
+    console.error(`tier nth error: ${e.message}，本輪不標次數`);
+    return null;
+  }
 }
 
 /* 這一輪的每個訊號 → 近 resonanceHours 小時內「早期型」與「金叉」都出現的幣 */

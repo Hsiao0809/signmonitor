@@ -5,6 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import * as TR from '../src/tier.mjs';
 import { groupByTopic } from '../src/telegram-topics.mjs';
+import * as HR from '../src/hourly.mjs';
+import * as E from '../src/early.mjs';
+import * as Q from '../src/quiet.mjs';
+import * as DM from '../src/dormant.mjs';
+import * as RT from '../src/rate.mjs';
+import * as G from '../src/gainer.mjs';
+import * as C from '../src/cross.mjs';
 
 const H = 3600e3;
 /* 台灣時間 → UTC 毫秒 */
@@ -152,4 +159,80 @@ test('接在 groupByTopic 前：話題分流照舊，共振有自己的話題', 
   const st = TR.emptyState();
   const { out } = TR.plan([{ k: 'hourly', text: 'H' }, { k: 'cross', text: 'C' }], [{ k: 'hourly', base: 'AAA' }, { k: 'cross', base: 'AAA' }], tw('2026-11-12 10:00'), st, cfgOf({}));
   assert.deepEqual(groupByTopic(out).map(g => g.k), ['hourly', 'resonance']);
+});
+
+/* ---------------- 今日第 N 次 ---------------- */
+const stOf = signals => ({ ...TR.emptyState(), signals });
+const withState = signals => { const d = tmp(); TR.saveState(d, stOf(signals)); return d; };
+
+test('今日第 N 次：同幣同類、台灣時間當天、前幾輪各算一次，含這一次', () => {
+  const now = tw('2026-11-12 14:00');
+  const dir = withState([
+    { k: 'hourly', base: 'PEPE', t: tw('2026-11-12 09:00') },
+    { k: 'hourly', base: 'PEPE', t: tw('2026-11-12 11:00') },
+    { k: 'hourly', base: 'PEPE', t: tw('2026-11-12 11:00') },     /* 同一輪重複只算一次 */
+    { k: 'hourly', base: 'PEPE', t: now },                         /* 這一輪自己不算 */
+    { k: 'hourly', base: 'PEPE', t: tw('2026-11-11 23:00') },     /* 昨天不算 */
+    { k: 'pre', base: 'PEPE', t: tw('2026-11-12 10:00') },        /* 別類不算 */
+    { k: 'hourly', base: 'AAA', t: tw('2026-11-12 10:00') }
+  ]);
+  const nth = TR.nthCounter(now, { cfg: cfgOf({}), dir });
+  assert.equal(nth('hourly')('1000PEPE'), 3);
+  assert.equal(nth('hourly')('PEPE'), 3);
+  assert.equal(nth('pre')('PEPE'), 2);
+  assert.equal(nth('hourly')('AAA'), 2);
+  assert.equal(nth('hourly')('NEW'), 1);
+  assert.equal(nth('cross')('PEPE'), 1);
+});
+
+test('今日第 N 次：台灣時間 0 點重算；關閉或狀態讀不到就不標', () => {
+  const dir = withState([{ k: 'hourly', base: 'AAA', t: tw('2026-11-12 23:00') }]);
+  assert.equal(TR.nthCounter(tw('2026-11-13 00:00'), { cfg: cfgOf({}), dir })('hourly')('AAA'), 1);
+  assert.equal(TR.nthCounter(tw('2026-11-12 23:30'), { cfg: cfgOf({ showNth: false }), dir }), null);
+  const empty = TR.nthCounter(tw('2026-11-12 14:00'), { cfg: cfgOf({}), dir: tmp() });
+  assert.equal(empty('hourly')('AAA'), 1);                         /* 沒有狀態檔＝第 1 次 */
+  const bad = tmp(); fs.writeFileSync(path.join(bad, 'state.json'), '{壞掉');
+  assert.equal(TR.nthCounter(tw('2026-11-12 14:00'), { cfg: cfgOf({}), dir: bad })('hourly')('AAA'), 1);
+});
+
+test('設定：showNth 預設開，可關', () => {
+  assert.equal(TR.loadConfig(path.join(tmp(), 'none.json'), {}).showNth, true);
+  const f = path.join(tmp(), 't.json'); fs.writeFileSync(f, JSON.stringify({ showNth: false }));
+  assert.equal(TR.loadConfig(f, {}).showNth, false);
+});
+
+test('文字：每個幣的第一行後面加「｜今日第 N 次」，不傳就跟原本一模一樣', () => {
+  const T = Date.UTC(2026, 10, 12, 3, 0), n3 = () => 3;
+  const hour = HR.pickAlerts(HR.emptyHourly(), [{ venue: 'okx', sym: 'X-USDT-SWAP', base: 'X', cat: 'crypto', stats: { x1: 8, x2: 5, qv: 4e6, chg: 0, price: 1 } }], T);
+  const pre = E.pickPre(E.emptyPre(), [{ venue: 'okx', sym: 'A-USDT-SWAP', base: 'A', cat: 'crypto', stats: { x1: 2.5, x2: 2, xp: 2.1, cx: null, qv: 5e5, chg: 0, price: 0.3712 } }], T);
+  const quiet = [{ key: 's:B:1', src: 'short', base: 'B', cat: 'stock', venue: 'okx', id: 'B-USDT-SWAP', t: T, price: 20, chg: -0.8, lim: 1.5, ref: 3, x: 4.2, r: {} }];
+  const wake = [{ base: 'IRYS', kind: 'A', okx: { sym: 'IRYS-USDT-SWAP', qv: 2e6, xA: 12, chg: 3, pos: -1, range: 20 }, bitget: { qv: 1e6, xA: 9 }, price: 0.5 }];
+  const rate = [{ ccy: 'ABC', v: 1.2, base: 0.2, x: 6, pre: 0.25, est: 1.2, last: 0.0123, chg: -0.05, by: 'est' }];
+  const gain = [{ base: 'AAA', tfs: ['1h'], chg: 50, ex: {}, qv: 1e6, c: 1, brk: 0.9, drop: 5, hi24: 1.2, stop: 3, tags: [] }];
+  const cross = [{ base: 'TEST', sym: 'TESTUSDT', close: 1, volx: 2, px200: 3, spread: 0.5, stopPx: 0.9, stopPct: 10, qv24h: 1e6 }];
+  const cases = [
+    ['hourly', n => HR.hourlyAlertText(hour, T, [], '', undefined, n)],
+    ['pre', n => E.preAlertText(pre, T, '', undefined, n)],
+    ['quiet', n => Q.quietAlertText(quiet, T, '', undefined, n)],
+    ['dormant', n => DM.wakeAlertText(wake, T, '', undefined, n)],
+    ['rate', n => RT.rateAlertText(rate, T, '', undefined, null, 7, n)],
+    ['gainer', n => G.gainerAlertText(gain, T, '', undefined, n)],
+    ['cross', n => C.crossAlertText(cross, [], T, '', undefined, n)],
+    ['crossd', n => C.crossAlertText(cross, [], T, '', C.CROSS_D, n)]
+  ];
+  for (const [name, f] of cases) {
+    const base = f(null), withN = f(n3);
+    assert.equal(f(undefined), base, `${name} 不傳時要和原本相同`);
+    assert.equal(base.includes('今日第'), false, name);
+    assert.equal(withN.split('今日第 3 次').length - 1, 1, `${name} 一個幣標一次`);
+    assert.equal(withN.replace('｜今日第 3 次', ''), base, `${name} 除了這一段其餘完全相同`);
+  }
+});
+
+test('文字：多檔各標各的次數', () => {
+  const T = Date.UTC(2026, 10, 12, 3, 0);
+  const gain = ['AAA', 'BBB'].map(b => ({ base: b, tfs: ['1h'], chg: 50, ex: {}, qv: 1e6, c: 1, brk: 0.9, drop: 5, hi24: 1.2, stop: 3, tags: [] }));
+  const t = G.gainerAlertText(gain, T, '', undefined, b => (b === 'AAA' ? 1 : 4));
+  assert.match(t, /AAA.*｜今日第 1 次/);
+  assert.match(t, /BBB.*｜今日第 4 次/);
 });

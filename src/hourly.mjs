@@ -220,12 +220,13 @@ export function othersLine(a) {
   return ks.length ? ks.map(v => `${VL[v]} ${a.others[v]}x`).join('｜') : '其他家無此合約或資料不足';
 }
 
-export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY) {
+/* nth：選填，base → 今日第幾次；不傳就不標（分級層的「今日第 N 次」） */
+export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY, nth = null) {
   if (!alerts.length) return '';
   alerts = mergeByBase(alerts);
   const L = [`【盤中爆量】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${alerts.length} 檔）`];
   alerts.slice(0, cfg.maxLines).forEach(a => {
-    L.push(`${tagsOf(a)}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ${xLine(a)}`);
+    L.push(`${tagsOf(a)}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ${xLine(a)}${nth ? `｜今日第 ${nth(a.base)} 次` : ''}`);
     const qv = a.also ? [a, ...a.also].map(x => `${VL[x.venue]} ${money(x.qv)}`).join('＋') : money(a.qv);
     L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（1H ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}%）｜成交額 ${qv}`);
     L.push(`  ${othersLine(a)}`);

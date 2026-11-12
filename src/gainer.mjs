@@ -183,12 +183,12 @@ export function tvOf(x) {
 const exText = ex => Object.entries(ex || {}).map(([v, c]) => `${LABEL[v] || v} ${pcs(typeof c === 'object' ? c.chg : c)}`).join('／');
 const tagText = tags => (tags || []).map(t => TAGS[t]).filter(Boolean);
 
-export function gainerAlertText(events, T, url = '', cfg = GAINER) {
+export function gainerAlertText(events, T, url = '', cfg = GAINER, nth = null) {
   if (!events.length) return '';
   /* 每檔一個段落（空行隔開）：run.mjs 依空行切段，過長時從段落之間切開，不會把連結標記切斷 */
   const blocks = [`【做空候選・轉弱】${tpe(T).slice(5, 10)} ${hhmm(T)} 台灣時間（${events.length} 檔）`];
   events.slice(0, cfg.maxLines).forEach(e => {
-    const L = [`${link(e.base, tvOf(e))} ${tfText(e.tfs)} 轉弱｜24h ${pcs(e.chg)}（${exText(e.ex)}）｜成交額 ${money(e.qv)}`];
+    const L = [`${link(e.base, tvOf(e))} ${tfText(e.tfs)} 轉弱｜24h ${pcs(e.chg)}（${exText(e.ex)}）｜成交額 ${money(e.qv)}${nth ? `｜今日第 ${nth(e.base)} 次` : ''}`];
     L.push(`  收 ${fmtP(e.c)} 跌破前一根低 ${fmtP(e.brk)}｜自高點回落 ${e.drop}%｜停損（24h 高）${e.hi24 ? fmtP(e.hi24) : '—'}${e.stop != null ? `（距現價 ${e.stop}%）` : ''}`);
     const tg = tagText(e.tags);
     if (tg.length) L.push(`  ${isAvoid(e.tags) ? '⚠ ' : ''}${tg.join('；')}`);

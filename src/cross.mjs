@@ -174,11 +174,11 @@ const barLabel = (t, cfg = CROSS) => cfg.barMs >= D1 ? `${tpe(t).slice(5, 16)}�
 const lab = cfg => cfg.tf === '4h' ? `${cfg.label} ` : cfg.label;   /* 4H 與中文之間留空格，日線不留 */
 const tags = x => `${x.stock ? '［代幣化股］' : ''}${x.closedMkt ? '【週末休市】' : ''}${x.late ? `（延遲 ${x.late} 根）` : ''}`;
 
-export function crossAlertText(newA, newB, latestT, url = '', cfg = CROSS) {
+export function crossAlertText(newA, newB, latestT, url = '', cfg = CROSS, nth = null) {
   if (!newA.length) return '';
   const L = [`【${lab(cfg)}金叉】${barLabel(latestT, cfg)} 台灣時間收盤（A 級 ${newA.length} 檔）`];
   newA.slice(0, cfg.maxLines).forEach(x => {
-    L.push(`${link(x.base, binanceTv(x.sym, cfg))}${tags(x)} 收 ${fmtP(x.close)}｜量 ${x.volx}x｜距 SMA200 ${sg(x.px200)}`);
+    L.push(`${link(x.base, binanceTv(x.sym, cfg))}${tags(x)} 收 ${fmtP(x.close)}｜量 ${x.volx}x｜距 SMA200 ${sg(x.px200)}${nth ? `｜今日第 ${nth(x.base)} 次` : ''}`);
     L.push(`  上穿 ${sg(x.spread, 2)}｜近 ${cfg.stopBars} 根低點 ${fmtP(x.stopPx)}（-${x.stopPct.toFixed(1)}%）｜24h 成交額 ${money(x.qv24h)}`);
   });
   if (newA.length > cfg.maxLines) L.push(`另有 ${newA.length - cfg.maxLines} 檔，見清單頁`);

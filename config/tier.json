@@ -3,5 +3,6 @@
   "digestAfter": "19:30",
   "resonanceHours": 48,
   "resonanceCoolHours": 24,
+  "showNth": true,
   "tiers": {}
 }
