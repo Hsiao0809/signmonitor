@@ -14,6 +14,7 @@ export const TOPICS = {
   gainer: '做空候選',
   cross: '4H 金叉',
   crossd: '日線金叉',
+  resonance: '共振',
   daily: '每日掃描',
   layout: '布局清單',
   events: '狀態變化',

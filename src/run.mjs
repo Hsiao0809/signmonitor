@@ -30,6 +30,7 @@ import { parseWatch, applyAuto, AUTO_DAYS } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
 import { groupByTopic, fileName } from './telegram-topics.mjs';
+import * as TR from './tier.mjs';
 import * as SN from './snapshot.mjs';
 import * as Q from './quiet.mjs';
 import { getJSON } from './venues.mjs';
@@ -432,8 +433,20 @@ async function main() {
   if (ev) msgs.push({ k: 'events', text: ev });
   /* Telegram 以 HTML 格式發送，標的名稱可直接點開 TradingView；先切段再轉換，避免標籤被切斷。
      每種通知各自一個檔（telegram-<序號>-<類型>.txt），notify.mjs 依類型送進群組對應的話題 */
+  /* 分級層（config/tier.json 的 mode）：legacy＝推播完全照舊，只在 logs/tier 記錄「若分級會怎麼發」；tiered＝早期型即時、金叉與做空候選進每日摘要、另有共振升級通知。出錯一律退回原本的 msgs */
+  const sigs = [
+    ...halerts.map(x => ({ k: 'hourly', base: x.base })),
+    ...hpre.map(x => ({ k: 'pre', base: x.base })),
+    ...dwake.map(x => ({ k: 'dormant', base: x.base })),
+    ...rspikes.map(x => ({ k: 'rate', base: x.ccy })),
+    ...qadded.map(x => ({ k: 'quiet', base: x.base })),
+    ...(cross?.newA || []).map(x => ({ k: 'cross', base: x.base })),
+    ...(crossD?.newA || []).map(x => ({ k: 'crossd', base: x.base })),
+    ...gevents.map(x => ({ k: 'gainer', base: x.base }))
+  ];
+  const outMsgs = TR.applyTier(msgs, sigs, nowMs);
   let tgN = 0;
-  for (const g of groupByTopic(msgs)) {
+  for (const g of groupByTopic(outMsgs)) {
     for (const m of splitMessages(g.text, 3500)) fs.writeFileSync(path.join(outDir, fileName(++tgN, g.k)), T.render(m, 'html'));
   }
 
