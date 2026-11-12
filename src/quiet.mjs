@@ -115,13 +115,13 @@ const SRC = { hourly: '盤中爆量', short: '每日爆量（短線）', layout:
 const sg = (v, d = 1) => v == null ? '—' : `${v >= 0 ? '+' : ''}${(+v).toFixed(d)}%`;
 const itLink = it => it.id ? link(it.base, tvUrl(it.venue, it.id, it.src === 'hourly' ? '60' : 'D')) : it.base;
 
-export function quietAlertText(items, nowMs, url = '', cfg = QUIET) {
+export function quietAlertText(items, nowMs, url = '', cfg = QUIET, nth = null) {
   if (!items.length) return '';
   const L = [`【量增價平】${tpe(nowMs).slice(5, 16)} 台灣時間（${items.length} 檔）`, '爆量但價格還沒大動：可能吸籌也可能出貨，方向未定'];
   items.slice(0, cfg.maxLines).forEach(it => {
     const unit = it.src === 'hourly' ? '1H' : '當日';
     const ref = it.ref == null ? `門檻 ±${it.lim}%` : `${it.src === 'hourly' ? '平常 1H 振幅' : 'ATR'} ${it.ref}%`;
-    L.push(`${itLink(it)}［${CAT[it.cat] || it.cat}］${SRC[it.src]} ${it.x}x｜${unit} ${sg(it.chg)}（${ref}）｜價 ${fmtP(it.price)}`);
+    L.push(`${itLink(it)}［${CAT[it.cat] || it.cat}］${SRC[it.src]} ${it.x}x｜${unit} ${sg(it.chg)}（${ref}）｜價 ${fmtP(it.price)}${nth ? `｜今日第 ${nth(it.base)} 次` : ''}`);
   });
   if (items.length > cfg.maxLines) L.push(`另有 ${items.length - cfg.maxLines} 檔，見網頁`);
   if (url) L.push(url);

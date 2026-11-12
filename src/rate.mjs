@@ -93,11 +93,11 @@ export function autoText(auto, days) {
   return p.join('；');
 }
 
-export function rateAlertText(events, T, url = '', cfg = RATE, auto = null, days = 7) {
+export function rateAlertText(events, T, url = '', cfg = RATE, auto = null, days = 7, nth = null) {
   if (!events.length) return '';
   const L = [`【借幣利率飆高】${tpe(T).slice(5, 10)} ${hhmm(T)} 台灣時間（OKX 槓桿借幣，${events.length} 檔）`];
   events.slice(0, cfg.maxLines).forEach(e => {
-    L.push(`${e.by === 'est' ? '【預估】' : ''}${e.re ? '【再升】' : ''}${link(e.ccy, tvOf(e.ccy))} 年化 ${apr(e.v)}（7 天中位數 ${apr(e.base)}，${e.x}x）`);
+    L.push(`${e.by === 'est' ? '【預估】' : ''}${e.re ? '【再升】' : ''}${link(e.ccy, tvOf(e.ccy))} 年化 ${apr(e.v)}（7 天中位數 ${apr(e.base)}，${e.x}x）${nth ? `｜今日第 ${nth(e.ccy)} 次` : ''}`);
     L.push(`  本小時 ${apr(e.pre)}｜下一小時預估 ${apr(e.est)}${e.last ? `｜價格 ${fmtP(e.last)}（24h ${pcs(e.chg)}）` : ''}`);
   });
   if (events.length > cfg.maxLines) L.push(`另有 ${events.length - cfg.maxLines} 檔，見網頁`);

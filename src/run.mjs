@@ -406,22 +406,25 @@ async function main() {
     } catch (e) { console.log('snapshot warning:', e.message); }
   }
 
+  /* 每個幣後面標「今日第 N 次」（config/tier.json 的 showNth；null＝不標）。只用在 Telegram 通知，Issue 與網頁文字不動 */
+  const NT = TR.nthCounter(nowMs);
+  const nk = k => (NT ? NT(k) : null);
   const msgs = [];
   /* 量增價平另發一則，排在最前面 */
-  if (qadded.length) msgs.push({ k: 'quiet', text: Q.quietAlertText(qadded, nowMs, a['quiet-url'] || '') });
-  const hmsg = HR.hourlyAlertText(halerts, targetHour, [], a['hourly-url'] || '');
+  if (qadded.length) msgs.push({ k: 'quiet', text: Q.quietAlertText(qadded, nowMs, a['quiet-url'] || '', undefined, nk('quiet')) });
+  const hmsg = HR.hourlyAlertText(halerts, targetHour, [], a['hourly-url'] || '', undefined, nk('hourly'));
   if (hmsg) msgs.push({ k: 'hourly', text: hmsg });
-  const pmsg = EA.preAlertText(hpre, targetHour, a['pre-url'] || '');
+  const pmsg = EA.preAlertText(hpre, targetHour, a['pre-url'] || '', undefined, nk('pre'));
   if (pmsg) msgs.push({ k: 'pre', text: pmsg });
-  const dmsg = DM.wakeAlertText(dwake, targetHour, a['dormant-url'] || '');
+  const dmsg = DM.wakeAlertText(dwake, targetHour, a['dormant-url'] || '', undefined, nk('dormant'));
   if (dmsg) msgs.push({ k: 'dormant', text: dmsg });
-  const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '', RT.RATE, rauto, AUTO_DAYS);
+  const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '', RT.RATE, rauto, AUTO_DAYS, nk('rate'));
   if (rmsg) msgs.push({ k: 'rate', text: rmsg });
-  const gmsg = GN.gainerAlertText(gevents, gHour, a['gainer-url'] || '');
+  const gmsg = GN.gainerAlertText(gevents, gHour, a['gainer-url'] || '', undefined, nk('gainer'));
   if (gmsg) msgs.push({ k: 'gainer', text: gmsg });
-  if (cross?.newA?.length) msgs.push({ k: 'cross', text: CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || '') });
+  if (cross?.newA?.length) msgs.push({ k: 'cross', text: CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || '', undefined, nk('cross')) });
   if (cross?.failed) msgs.push({ k: 'alert', text: `訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次` });
-  if (crossD?.newA?.length) msgs.push({ k: 'crossd', text: CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D) });
+  if (crossD?.newA?.length) msgs.push({ k: 'crossd', text: CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D, nk('crossd')) });
   if (crossD?.failed) msgs.push({ k: 'alert', text: `訊號掃描台｜日線金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${crossD.failed}\n下一個整點自動重試；同一根日線 K 只通知一次` });
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
   if (dailyMsg) msgs.push({ k: 'daily', text: dailyMsg });
