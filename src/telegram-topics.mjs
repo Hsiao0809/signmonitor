@@ -11,6 +11,7 @@ export const TOPICS = {
   pre: '盤中預警',
   dormant: '沉睡甦醒',
   rate: '借幣利率',
+  gainer: '做空候選',
   cross: '4H 金叉',
   crossd: '日線金叉',
   daily: '每日掃描',

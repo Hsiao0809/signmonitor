@@ -24,6 +24,8 @@ import * as DS from './dormant-scan.mjs';
 import * as OI from './oi.mjs';
 import * as RT from './rate.mjs';
 import * as RTS from './rate-scan.mjs';
+import * as GN from './gainer.mjs';
+import * as GNS from './gainer-scan.mjs';
 import { parseWatch, applyAuto, AUTO_DAYS } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
@@ -347,6 +349,27 @@ async function main() {
     rw.forEach(w => console.log('rate warning:', w));
   }
 
+  /* ---------- 做空候選（各交易所漲幅榜）：每小時一次，轉弱推播；失敗只影響這一塊 ---------- */
+  let gevents = [], gstats = null;
+  const gBody = a['gainer-body'] && fs.existsSync(a['gainer-body']) ? fs.readFileSync(a['gainer-body'], 'utf8') : '';
+  const gstate = a['gainer-body'] ? GN.extractGainer(gBody) : null;
+  if (a['gainer-body'] && !gstate) hw.push('做空候選 Issue 的狀態無法解析；為避免覆蓋，本輪略過');
+  const gHour = Math.floor(Date.now() / HOUR) * HOUR;
+  if (doHourly && gstate && gstate.lastHour !== gHour) {
+    const gw = [];
+    try {
+      const r = await GNS.collect(gHour, gw);
+      const ctx = GN.contextOf({ hstate, pstate, dstate, lstate }, gHour);
+      r.items.forEach(it => { it.tags = GN.tagsOf(it, ctx); });
+      gevents = GN.applyScan(gstate, r.items, gHour, r.counts);
+      gstats = r.counts;
+      const weakNow = r.items.filter(it => Object.keys(it.weak || {}).length).length;
+      const gnote = `最近一次檢查：${T.tpe(gHour)} 台灣時間；OKX ${r.counts.okx} 檔、Bitget ${r.counts.bitget} 檔、Bybit ${r.counts.bybit} 檔、Binance 現貨 ${r.counts.binance} 檔，名單 ${r.items.length} 檔，目前轉弱 ${weakNow} 檔，本輪通知 ${gevents.length} 檔`;
+      fs.writeFileSync(path.join(outDir, 'gainer-body.md'), GN.gainerBody(gstate, { nowMs, warnings: gw, note: gnote }, t => T.render(t, 'md')));
+    } catch (e) { hw.push(`做空候選判斷失敗：${e.message}`); }
+    gw.forEach(w => console.log('gainer warning:', w));
+  }
+
   /* ---------- 量增價平：新紀錄＋到期的 24h／72h 漲跌；失敗只影響這一塊 ---------- */
   let qadded = [];
   const qBody = a['quiet-body'] && fs.existsSync(a['quiet-body']) ? fs.readFileSync(a['quiet-body'], 'utf8') : '';
@@ -376,7 +399,7 @@ async function main() {
   let snap = null;
   if (a['snapshot'] !== 'skip') {
     try {
-      snap = await SN.take(SN.needOf({ short: state, layout: lstate, hourly: hstate, cross: cstate, crossD: dstateD }), Date.now());
+      snap = await SN.take(SN.needOf({ short: state, layout: lstate, hourly: hstate, cross: cstate, crossD: dstateD, gainer: gstate }), Date.now());
       fs.writeFileSync(path.join(outDir, 'snapshot-body.md'), SN.embedSnapshot(SN.snapshotMarkdown(snap), snap));
       snap.warnings.forEach(w => console.log('snapshot warning:', w));
     } catch (e) { console.log('snapshot warning:', e.message); }
@@ -393,6 +416,8 @@ async function main() {
   if (dmsg) msgs.push({ k: 'dormant', text: dmsg });
   const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '', RT.RATE, rauto, AUTO_DAYS);
   if (rmsg) msgs.push({ k: 'rate', text: rmsg });
+  const gmsg = GN.gainerAlertText(gevents, gHour, a['gainer-url'] || '');
+  if (gmsg) msgs.push({ k: 'gainer', text: gmsg });
   if (cross?.newA?.length) msgs.push({ k: 'cross', text: CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || '') });
   if (cross?.failed) msgs.push({ k: 'alert', text: `訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次` });
   if (crossD?.newA?.length) msgs.push({ k: 'crossd', text: CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D) });
@@ -430,7 +455,7 @@ async function main() {
     `sweep=${sweep ? `targets=${sweep.n} events=${sweep.events} added=${sweep.added}` : 'skip'}`,
     `cross=${cross ? (cross.failed ? 'failed' : `${T.tpe(cross.latestT)} A=${cross.newA.length} B=${cross.newB.length} active=${cstate.active.length}`) : 'skip'}`,
     `crossD=${crossD ? (crossD.failed ? 'failed' : `${T.tpe(crossD.latestT)} A=${crossD.newA.length} B=${crossD.newB.length} active=${dstateD.active.length}`) : 'skip'}`,
-    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} dormant=${dstats ? `${dwake.length}/${dstats.dormant}/${dstats.scanned} bf=${dstats.backfilled}` : 'skip'} rate=${rstats ? `${rspikes.length}/${rstate.n} bf=${rstats.backfilled}` : 'skip'} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
+    `hourly=${prep ? `${T.tpe(targetHour)} alerts=${halerts.length} ramp=${halerts.filter(x => x.rampOnly).length} pre=${hpre.length} dormant=${dstats ? `${dwake.length}/${dstats.dormant}/${dstats.scanned} bf=${dstats.backfilled}` : 'skip'} rate=${rstats ? `${rspikes.length}/${rstate.n} bf=${rstats.backfilled}` : 'skip'} gainer=${gstats ? `${gstate.items.length} weak=${gevents.length} ex=${gstats.okx}/${gstats.bitget}/${gstats.bybit}/${gstats.binance}` : 'skip'} bybitCaptured=${Object.values(captured).filter(x => x.confirm).length}` : (doHourly ? 'failed' : 'skip')}`
   ].join(' ');
   console.log(summary);
   [...warnings, ...hw].forEach(w => console.log('warning:', w));

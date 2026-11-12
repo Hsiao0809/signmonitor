@@ -8,6 +8,7 @@ name: Monitor
 # - 日線金叉：同上資料源與 EMA20／SMA30，每根日線 K 收盤後（台灣 08:00 後第一輪）判斷一次，獨立 Issue「金叉清單（日線）」
 # - 掃流動性：短線／布局／自選標的，每根 4H K 收盤後標記一次（只在網頁，不推播）
 # - 借幣利率：OKX 各幣槓桿借幣利率比 7 天中位數暴增就推播（每小時一次）
+# - 做空候選：OKX／Bitget／Bybit／Binance 現貨 24h 漲幅榜，名單只在網頁，1H／4H 轉弱才推播（每小時一次）
 # - 每日掃描：台灣時間 09:00 後當天第一輪（布局清單等 Bybit 成交檔 09:12 公布後才跑）
 # GitHub 排程可能延遲或略過：晚於整點才啟動時改評估上一小時（Bybit 該小時會缺），
 # 每日掃描與 4H 追蹤則由下一輪自動補上。
@@ -96,6 +97,7 @@ jobs:
             await ensure("盤中預警", "pre-body.md", "pre_");
             await ensure("沉睡甦醒", "dormant-body.md", "dormant_");
             await ensure("借幣利率", "rate-body.md", "rate_");
+            await ensure("做空候選", "gainer-body.md", "gainer_");
 
       - name: Restore Bybit daily cache
         if: ${{ inputs.mode != 'intrahour' }}
@@ -134,11 +136,12 @@ jobs:
           PRE_URL: ${{ steps.issue.outputs.pre_url }}
           DORMANT_URL: ${{ steps.issue.outputs.dormant_url }}
           RATE_URL: ${{ steps.issue.outputs.rate_url }}
+          GAINER_URL: ${{ steps.issue.outputs.gainer_url }}
         run: >-
           node src/run.mjs
-          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --crossd-body crossd-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md --dormant-body dormant-body.md --rate-body rate-body.md
+          --body issue-body.md --layout-body layout-body.md --hourly-body hourly-body.md --watch-body watch-body.md --cross-body cross-body.md --crossd-body crossd-body.md --sweep-body sweep-body.md --quiet-body quiet-body.md --pre-body pre-body.md --dormant-body dormant-body.md --rate-body rate-body.md --gainer-body gainer-body.md
           --bybit-cache .cache/bybit-daily.json --dormant-cache .cache/dormant.json --rate-cache .cache/rates.json --oi-dir data/oi --rate-dir data/rates --out out
-          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --crossd-url "$CROSSD_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL" --dormant-url "$DORMANT_URL" --rate-url "$RATE_URL"
+          --daily "$DAILY_MODE" --issue-url "$ISSUE_URL" --layout-url "$LAYOUT_URL" --hourly-url "$HOURLY_URL" --cross-url "$CROSS_URL" --crossd-url "$CROSSD_URL" --quiet-url "$QUIET_URL" --pre-url "$PRE_URL" --dormant-url "$DORMANT_URL" --rate-url "$RATE_URL" --gainer-url "$GAINER_URL"
 
       - name: Run intrahour
         if: ${{ inputs.mode == 'intrahour' }}
@@ -183,6 +186,7 @@ jobs:
           PRE_NUMBER: ${{ steps.issue.outputs.pre_number }}
           DORMANT_NUMBER: ${{ steps.issue.outputs.dormant_number }}
           RATE_NUMBER: ${{ steps.issue.outputs.rate_number }}
+          GAINER_NUMBER: ${{ steps.issue.outputs.gainer_number }}
           WATCH_NUMBER: ${{ steps.issue.outputs.watch_number }}
         with:
           script: |
@@ -208,6 +212,7 @@ jobs:
             await put("PRE_NUMBER", "out/pre-body.md", "out/none.md");
             await put("DORMANT_NUMBER", "out/dormant-body.md", "out/none.md");
             await put("RATE_NUMBER", "out/rate-body.md", "out/none.md");
+            await put("GAINER_NUMBER", "out/gainer-body.md", "out/none.md");
 
             // 自選標的：借幣利率推播的幣自動加入（7 天後移出）。讀最新的 Issue 再套用，避免蓋掉網頁剛做的修改。
             try {

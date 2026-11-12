@@ -61,11 +61,12 @@ export async function take(need, nowMs) {
 }
 
 /* 網頁要哪些 Bitget／Binance 價格：從各清單狀態收集 */
-export function needOf({ short, layout, hourly, cross, crossD }) {
+export function needOf({ short, layout, hourly, cross, crossD, gainer }) {
   const need = { bitget: new Set(), binance: new Set() };
   if (short) [...short.pending, ...short.open].forEach(c => { if (c.ex === 'bitget') need.bitget.add(c.id); });
   if (layout) layout.active.forEach(it => { const s = it.syms || {}; if (!s.okx && s.bitget) need.bitget.add(s.bitget); });
   if (hourly) hourly.recent.forEach(a => { if (a.venue === 'bitget') need.bitget.add(a.sym); });
+  if (gainer) gainer.items.forEach(it => { if (it.sv === 'bitget' && it.sid) need.bitget.add(it.sid); });
   if (cross) [...cross.active, ...cross.recentB].forEach(c => need.binance.add(c.sym));
   if (crossD) [...crossD.active, ...crossD.recentB].forEach(c => need.binance.add(c.sym));
   return need;

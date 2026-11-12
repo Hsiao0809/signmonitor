@@ -140,6 +140,7 @@ function needOf(d) {
   if (d.pre) [...d.pre.early, ...d.pre.pre].forEach(a => add(a.venue, a.sym));
   if (d.dormant) d.dormant.events.forEach(e => add('okx', e.okx.sym));
   if (d.rate) d.rate.events.forEach(e => add('okx', `${e.ccy}-USDT-SWAP`));
+  if (d.gainer) d.gainer.items.forEach(it => add(it.sv, it.sid));
   return need;
 }
 /* 布局清單用哪一家報價：OKX → Bitget（快照）→ Bybit */
@@ -156,7 +157,7 @@ const crossOf = cs => cs ? {
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls, cs, sn, sw, qs, ps, ds, rs, cds] = await Promise.all([
+  const [hs, ss, ls, cs, sn, sw, qs, ps, ds, rs, cds, gs] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
     stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
@@ -167,19 +168,21 @@ async function dashboard(env) {
     stateOf(by('盤中預警')?.body, 'PRE_STATE'),
     stateOf(by('沉睡甦醒')?.body, 'DORMANT_STATE'),
     stateOf(by('借幣利率')?.body, 'RATE_STATE'),
-    stateOf(by('金叉清單（日線）')?.body, 'CROSSD_STATE')
+    stateOf(by('金叉清單（日線）')?.body, 'CROSSD_STATE'),
+    stateOf(by('做空候選')?.body, 'GAINER_STATE')
   ]);
-  const urls = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
-  const updated = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
+  const urls = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '做空候選', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
+  const updated = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '做空候選', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
   const d = {
     urls, updated,
-    warnings: Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
+    warnings: Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '做空候選', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性'].map(t => [t, warningsOf(by(t)?.body)])),
     watch: parseWatch(by(WATCH_TITLE)?.body),
     watchAuto: autoOf(by(WATCH_TITLE)?.body),
     hourly: hs ? { lastHour: hs.lastHour, recent: hs.recent || [] } : null,
     pre: ps ? { early: ps.early || [], pre: ps.pre || [], lastSlot: ps.lastSlot, lastPreHour: ps.lastPreHour } : null,
     dormant: ds ? { events: ds.events || [], lastHour: ds.lastHour } : null,
     rate: rs ? { events: rs.events || [], top: rs.top || [], n: rs.n || 0, lastHour: rs.lastHour } : null,
+    gainer: gs ? { lastHour: gs.lastHour, items: gs.items || [], events: gs.events || [], counts: gs.counts || {} } : null,
     short: ss ? {
       lastDaily: ss.lastDaily,
       pending: (ss.pending || []).map(c => pick(c, ['base', 'cat', 'ex', 'id', 'dayT', 'hi', 'lo', 'close', 'vx', 'chgDay', 'pattern', 'quiet', 'qlim', 'atrp'])),
@@ -434,18 +437,18 @@ a{color:var(--acc)}
 .it{padding:8px 10px}
 </style></head><body>
 <header><div class="hd"><h1>signmonitor</h1>
-<nav id="tabs"><button data-t="home">總覽</button><button data-t="hourly">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="cross">金叉</button><button data-t="watch">自選</button></nav>
+<nav id="tabs"><button data-t="home">總覽</button><button data-t="hourly">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="cross">金叉</button><button data-t="gainer">做空候選</button><button data-t="watch">自選</button></nav>
 <span class="upd" id="upd"></span><button class="btn" id="reload">重新整理</button></div></header>
 <main id="main"><div class="empty">讀取中…</div></main>
 <script>
 var D=null,TAB='home',PW='',CNT=null;
 try{PW=localStorage.getItem('sm_pw')||''}catch(e){}
-try{var _t=localStorage.getItem('sm_tab');if(/^(home|hourly|short|layout|cross|watch)$/.test(_t||''))TAB=_t}catch(e){}
+try{var _t=localStorage.getItem('sm_tab');if(/^(home|hourly|short|layout|cross|gainer|watch)$/.test(_t||''))TAB=_t}catch(e){}
 function lsg(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lss(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 /* 篩選與排序：預設值；使用者改過的存在瀏覽器，重新整理後保留（搜尋字不保留） */
-var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0,quiet:0,pane:'spike'},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,quiet:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0,quiet:0},cross:{q:'',cat:'all',watch:0,pane:'4h'}};
-var SD={hourly:{k:'t',d:-1},early:{k:'t',d:-1},pre:{k:'t',d:-1},wake:{k:'t',d:-1},rate:{k:'t',d:-1},rtop:{k:'x',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},tcd:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
+var FD={hourly:{q:'',cat:'all',ven:'all',win:'72',minx:'0',watch:0,single:0,quiet:0,pane:'spike'},short:{q:'',side:'all',cat:'all',ven:'all',sw:'0',watch:0,quiet:0,pane:'open'},layout:{q:'',cat:'all',ven:'all',sw:'0',watch:0,single:0,quiet:0},cross:{q:'',cat:'all',watch:0,pane:'4h'},gainer:{q:'',cat:'all',ven:'all',watch:0,weak:0,avoid:0,pane:'list'}};
+var SD={hourly:{k:'t',d:-1},early:{k:'t',d:-1},pre:{k:'t',d:-1},wake:{k:'t',d:-1},rate:{k:'t',d:-1},rtop:{k:'x',d:-1},gainer:{k:'chg',d:-1},gevt:{k:'t',d:-1},open:{k:'trigT',d:-1},pend:{k:'near',d:1},layout:{k:'day',d:-1},crossA:{k:'t',d:-1},crossB:{k:'t',d:-1},wh:{k:'t',d:-1},tq:{k:'t',d:-1},to:{k:'why',d:1},tx:{k:'over',d:1},tc:{k:'t',d:-1},tcd:{k:'t',d:-1},th:{k:'x',d:-1},tl:{k:'aft',d:-1},ws:{k:'t',d:-1},shC:{k:'exitT',d:-1},crC:{k:'t',d:-1}};
 function merge(def,sv){var o={};Object.keys(def).forEach(function(k){var a=def[k],b=(sv||{})[k]||{},x={};Object.keys(a).forEach(function(j){x[j]=(j in b)?b[j]:a[j]});o[k]=x});return o}
 var F=merge(FD,lsg('sm_f',{})),S=merge(SD,lsg('sm_s',{}));
 Object.keys(F).forEach(function(k){F[k].q=''});
@@ -667,6 +670,36 @@ COLS.rtop=function(){return [
   {k:'base',l:'7天中位數',n:1,s:function(r){return r.base},v:function(r){return apr(r.base)}},
   {k:'x',l:'倍數',n:1,s:function(r){return r.x},v:function(r){return r.x+'x'}},
   {k:'chg',l:'24h',n:1,s:function(r){return r.chg},v:function(r){return r.chg==null?'—':pc(r.chg)}}]};
+/* 做空候選：各交易所漲幅榜；轉弱才推播，勿空＝可能剛啟動的多方 */
+var GVL={okx:'OKX',bitget:'Bitget',bybit:'Bybit',binance:'Binance 現貨'};
+var GTG={spike:['爆量','24 小時內爆量，可能剛啟動，勿空',1],wake:['沉睡甦醒','7 天內沉睡甦醒，勿空',1],layout:['布局','布局清單追蹤中，勿空',1],solo:['單家','只有單一交易所大漲',0],wide:['停損過寬','24h 高點離現價超過 10%：降槓桿、縮倉或放棄',1],noperp:['無合約','Binance 現貨榜，沒有合約不能做空',0],nok:['無K線','沒有 OKX／Bitget 合約，無法判斷轉弱',0]};
+function gTags(t){return (t||[]).map(function(k){var x=GTG[k];return x?(x[2]?'<span class="fl" title="'+esc(x[1])+'">'+x[0]+'</span>':'<span class="cat" title="'+esc(x[1])+'">'+x[0]+'</span>'):''}).join('')}
+function gAvoid(t){return (t||[]).some(function(k){return k==='spike'||k==='wake'||k==='layout'})}
+function gTv(o){return o.sv&&o.sid?tv(o.sv,o.sid,'60'):'https://www.tradingview.com/chart/?symbol='+encodeURIComponent('BINANCE:'+o.base+'USDT')+'&interval=60'}
+function gPx(o){return o.sv&&o.sid?LP(o.sv,o.sid):null}
+function gStop(o){var p=gPx(o)||o.px;return o.hi24&&p?(o.hi24/p-1)*100:null}
+function gExTxt(ex){return Object.keys(ex||{}).map(function(v){var x=ex[v];return (GVL[v]||v)+' '+pc100(typeof x==='object'?x.chg:x).replace(/<[^>]*>/g,'')}).join('／')}
+function gWeak(o){var w=o.weak||{};return (w['4h']?2:0)+(w['1h']?1:0)}
+function gWeakTag(o){var w=o.weak||{},l=[w['4h']?'4H':'',w['1h']?'1H':''].filter(Boolean);return l.length?'<span class="badge bs" title="已收盤的最後一根 K 跌破前一根最低點，且最高點沒有再創近期高點">'+l.join('＋')+' 轉弱</span>':'<span class="cat">—</span>'}
+COLS.gainer=function(){return [
+  {k:'base',l:'代號',dd:1,s:function(o){return o.base},v:function(o){return '<div class="c0w">'+link(o.base,gTv(o))+CT(o.cat)+gTags(o.tags)+(inWatch(o.base)?'<span class="star" title="已在自選">★</span>':WA(o.base))+'</div>'}},
+  {k:'weak',l:'轉弱',s:gWeak,v:gWeakTag},
+  {k:'chg',l:'24h 漲幅',n:1,s:function(o){return o.chgMax},v:function(o){return '<b>'+pc100(o.chgMax)+'</b>'},tt:function(o){return Object.keys(o.ex||{}).map(function(v){return (GVL[v]||v)+' '+o.ex[v].chg+'%（榜上第 '+o.ex[v].rank+'）'}).join('\\n')}},
+  {k:'qv',l:'成交額',n:1,s:function(o){return o.qv},v:function(o){return money(o.qv)}},
+  {k:'stop',l:'停損距離',h:'以 24h 高點當停損，離現價多遠；超過 10% 5 倍槓桿幾乎貼著強平線',n:1,s:gStop,v:function(o){var d=gStop(o);return d==null?'—':fp(o.hi24)+' <span class="'+(d>10?'wtxt':'cat')+'">'+d.toFixed(1)+'%</span>'}},
+  {k:'px',l:'現價',n:1,v:function(o){return o.sv?FP(o.sv,gPx(o)):'—'}},
+  {k:'since',l:'上榜',s:function(o){return o.since},v:function(o){return tpe(o.since)}},
+  {k:'ven',l:'榜單',dd:1,s:function(o){return Object.keys(o.ex||{}).length},v:function(o){return Object.keys(o.ex||{}).map(function(v){var x=o.ex[v];return '<span class="badge'+(x.hot?'':' cat')+'" title="'+esc((GVL[v]||v)+' 24h '+x.chg+'%')+'">'+(GVL[v]||v)+(x.hot?' #'+x.rank:'')+'</span>'}).join(' ')}}]};
+COLS.gevt=function(){return [
+  {k:'base',l:'代號',dd:1,s:function(e){return e.base},v:function(e){return '<div class="c0w">'+link(e.base,gTv(e))+gTags(e.tags)+(inWatch(e.base)?'<span class="star" title="已在自選">★</span>':WA(e.base))+'</div>'}},
+  {k:'t',l:'時間',s:function(e){return e.t},v:function(e){return tpe(e.t)}},
+  {k:'tf',l:'週期',v:function(e){return '<span class="badge bs">'+e.tfs.map(function(t){return t.toUpperCase()}).join('＋')+' 轉弱</span>'}},
+  {k:'chg',l:'24h 漲幅',n:1,s:function(e){return e.chg},v:function(e){return pc100(e.chg)},tt:function(e){return gExTxt(e.ex)}},
+  {k:'drop',l:'自高點',n:1,s:function(e){return e.drop},v:function(e){return '-'+e.drop+'%'}},
+  {k:'stop',l:'停損距離',h:'通知當下，24h 高點離現價的距離',n:1,s:function(e){return e.stop},v:function(e){return e.stop==null?'—':fp(e.hi24)+' <span class="'+(e.stop>10?'wtxt':'cat')+'">'+e.stop+'%</span>'}},
+  {k:'price',l:'通知價',n:1,v:function(e){return fp(e.price)}},
+  {k:'px',l:'現價',n:1,v:function(e){return e.sv?FP(e.sv,gPx(e)):'—'}},
+  {k:'aft',l:'之後（做空）',h:'通知價到現價：正的＝跌了（做空賺）',n:1,s:function(e){var p=gPx(e);return p&&e.price?1-p/e.price:null},v:function(e){var p=gPx(e);return p&&e.price?pc(1-p/e.price):'—'}}]};
 COLS.pre=function(){return [
   {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.closed?'<span class="cat">週末休市</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
   {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
@@ -703,7 +736,7 @@ function sel(k,opts){var v=String(F[TAB][k]);return '<select data-f="'+k+'" clas
 function tg(k,l){return '<button class="tg'+(F[TAB][k]?' on':'')+'" data-t="'+k+'">'+l+'</button>'}
 /* 金叉分頁目前看哪個週期（4H／日線）：欄位說明、根數、保留時間跟著變 */
 function CXI(){var d=F.cross&&F.cross.pane==='1d';return d?{d:1,k:'日線 K',n:30,days:30,bh:'7 天',nm:'日線',ms:864e5}:{d:0,k:'4H K',n:42,days:7,bh:'48 小時',nm:'4H',ms:144e5}}
-function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='hourly'?({early:'early',pre:'pre',wake:'wake',rate:'rate'}[F.hourly.pane]||'hourly'):TAB==='cross'?'crossA':TAB}
+function sortTarget(){return TAB==='short'?({pend:'pend',closed:'shC'}[F.short.pane]||'open'):TAB==='hourly'?({early:'early',pre:'pre',wake:'wake',rate:'rate'}[F.hourly.pane]||'hourly'):TAB==='cross'?'crossA':TAB==='gainer'?(F.gainer.pane==='evt'?'gevt':'gainer'):TAB}
 /* 區塊：標題固定，內容在區塊裡捲動（電腦） */
 function panel(title,body,cls){return '<section class="pnl '+(cls||'')+'">'+(title?'<h2>'+title+'</h2>':'')+'<div class="pnl-b">'+body+'</div></section>'}
 function fbar(){
@@ -713,11 +746,12 @@ function fbar(){
     h+=sel('side',[['all','多空都看'],['long','只看做多'],['short','只看做空']])}
   if(TAB==='hourly'&&D.hourly){var P=D.pre;h+='<span class="seg">'+[['spike','正式爆量 '+D.hourly.recent.length],['early','盤中推算 '+(P?P.early.length:0)],['pre','預警 '+(P?P.pre.length:0)],['wake','沉睡甦醒 '+(D.dormant?D.dormant.events.length:0)],['rate','借幣利率 '+(D.rate?D.rate.events.length:0)]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
   if(TAB==='cross'){var C4=D.cross,CD=D.crossD,cn=function(c){return c?c.active.length+c.recentB.length:0};h+='<span class="seg">'+[['4h','4H '+cn(C4)],['1d','日線 '+cn(CD)]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+((f.pane==='1d'?'1d':'4h')===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
+  if(TAB==='gainer'&&D.gainer){var GN=D.gainer;h+='<span class="seg">'+[['list','名單 '+GN.items.length],['evt','轉弱紀錄 '+GN.events.length]].map(function(o){return '<button data-pane="'+o[0]+'" class="'+(f.pane===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
   h+=sel('cat',TAB==='cross'?CATS.slice(0,3):CATS);
   if('ven' in f)h+=sel('ven',VENS);
   if(TAB==='hourly')h+=sel('win',[['72','72 小時'],['24','24 小時'],['6','6 小時']])+sel('minx',[['0','倍數不限'],['5','≥ 5x'],['10','≥ 10x'],['20','≥ 20x'],['50','≥ 50x']]);
   if('sw' in f)h+=sel('sw',[['0','掃單不限'],['1','72h 有掃單'],['2','72h 有量掃單']]);
-  h+=tg('watch','只看自選');if('single' in f)h+=tg('single','只有一家爆量');if('quiet' in f)h+=tg('quiet','只看量增價平');
+  h+=tg('watch','只看自選');if('single' in f)h+=tg('single','只有一家爆量');if('quiet' in f)h+=tg('quiet','只看量增價平');if('weak' in f)h+=tg('weak','只看轉弱');if('avoid' in f)h+=tg('avoid','排除勿空');
   var t=sortTarget(),cs=COLS[t]().filter(function(c){return c.s});
   h+='<span class="so"><select id="sk">'+cs.map(function(c){return '<option value="'+c.k+'"'+(S[t].k===c.k?' selected':'')+'>排序：'+c.l+'</option>'}).join('')+'</select><button class="tg" id="sd">'+(S[t].d>0?'↑ 小到大':'↓ 大到小')+'</button></span>';
   return h+'<span class="cnt" id="cnt"></span><button class="lnk" id="clr">清除篩選</button></div>'}
@@ -849,7 +883,7 @@ function overlap(){
     D.crossD.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossDB',tpe(it.t)+' @'+fp(it.close))})}
   return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b]}}).filter(function(x){return x.n>=2})
     .sort(function(a,b){return (b.n-a.n)||(inWatch(b.b)-inWatch(a.b))||a.b.localeCompare(b.b)})}
-var MODEXP={'盤中爆量':3,'盤中預警':3,'沉睡甦醒':3,'借幣利率':3,'短線清單':3,'布局清單':30,'金叉清單':6,'金叉清單（日線）':30,'掃流動性':6};
+var MODEXP={'盤中爆量':3,'盤中預警':3,'沉睡甦醒':3,'借幣利率':3,'做空候選':3,'短線清單':3,'布局清單':30,'金叉清單':6,'金叉清單（日線）':30,'掃流動性':6};
 function status(){
   var s='<div class="card">';
   Object.keys(MODEXP).forEach(function(t){
@@ -949,6 +983,16 @@ function cross(){
   s+=panel('成績 '+stat(cl,function(p){return p.exitRet},function(v){return (v>=0?'+':'')+v.toFixed(1)+'%（死叉出場）'}),table('crC',cl,COLS.crC(),'尚無（A 級追蹤滿 '+I.n+' 根後結算）'),'keep k3');
   return s+'</div>'}
 
+/* ---------- 做空候選 ---------- */
+function gainer(){
+  var g=D.gainer;if(!g){CNT=null;return '<div class="empty">還沒有做空候選資料（下一個整點跑完後出現）</div>'}
+  var f=F.gainer,P=function(o){return pass(f,{base:o.base,cat:o.cat||'crypto',vens:Object.keys(o.ex||{}),watch:inWatch(o.base)})};
+  var c=g.counts||{},meta='<div class="meta">各交易所 24h 漲幅榜：任一家排前 20、漲幅 ≥ 30%、成交額 ≥ 50 萬 USDT 就列入。漲幅高只是名單，不是進場訊號；<b>轉弱</b>＝已收盤的最後一根 K 收盤跌破前一根最低點，且最高點沒有再創近期高點（1H 看近 24 根、4H 看近 12 根），轉弱才推播。<span class="fl">勿空</span>＝24 小時內爆量、7 天內沉睡甦醒或布局清單追蹤中，可能是剛啟動的多方，只標記不過濾。轉弱只用 OKX、Bitget 的 K 線（Bybit 的 K 線擋雲端）。沒有回測。最近一次：'+(g.lastHour?tpe(g.lastHour):'—')+'（OKX '+(c.okx||0)+'、Bitget '+(c.bitget||0)+'、Bybit '+(c.bybit||0)+'、Binance 現貨 '+(c.binance||0)+' 檔）。</div>';
+  if(f.pane==='evt'){var el=g.events.filter(function(e){return P(e)&&(!f.avoid||!gAvoid(e.tags))});CNT=[el.length,g.events.length];
+    return '<div class="vs">'+meta+panel('轉弱紀錄 <small>保留 7 天</small>',table('gevt',el,COLS.gevt(),'還沒有轉弱紀錄'),'grow')+'</div>'}
+  var list=g.items.filter(function(o){return P(o)&&(!f.weak||gWeak(o))&&(!f.avoid||!gAvoid(o.tags))});CNT=[list.length,g.items.length];
+  return '<div class="vs">'+meta+panel('',table('gainer',list,COLS.gainer(),g.items.length?'沒有符合的項目':'目前沒有符合條件的標的'),'grow')+'</div>'}
+
 /* ---------- 自選 ---------- */
 var VC={};
 function watch(){
@@ -997,8 +1041,8 @@ function bindWatch(){
   $('pwsave').onclick=function(){PW=$('pw').value.trim();try{localStorage.setItem('sm_pw',PW)}catch(e){}$('pwcard').style.display=PW?'none':'flex'}}
 
 /* ---------- 畫面 ---------- */
-var VIEWS={home:home,hourly:hourly,short:short,layout:layout,cross:cross,watch:watch};
-function counts(){var h=D.hourly,x=D.short,l=D.layout,c=D.cross;return {home:todo().length,hourly:h?h.recent.length:0,short:x?x.open.length+x.pending.length:0,layout:l?l.active.length:0,cross:(c?c.active.length+c.recentB.length:0)+(D.crossD?D.crossD.active.length+D.crossD.recentB.length:0),watch:(D.watch||[]).length}}
+var VIEWS={home:home,hourly:hourly,short:short,layout:layout,cross:cross,gainer:gainer,watch:watch};
+function counts(){var h=D.hourly,x=D.short,l=D.layout,c=D.cross;return {home:todo().length,hourly:h?h.recent.length:0,short:x?x.open.length+x.pending.length:0,layout:l?l.active.length:0,cross:(c?c.active.length+c.recentB.length:0)+(D.crossD?D.crossD.active.length+D.crossD.recentB.length:0),watch:(D.watch||[]).length,gainer:D.gainer?D.gainer.items.length:0}}
 function tabs(){if(!D)return;var n=counts();document.querySelectorAll('#tabs button').forEach(function(b){var i=b.querySelector('i');if(!i){i=document.createElement('i');b.appendChild(i)}i.textContent=n[b.dataset.t]||''})}
 function body(){var c=$('ct');if(!c)return;c.innerHTML=VIEWS[TAB]();updCnt();bindCt()}
 function draw(){if(!D)return;var m=$('main');m.scrollTop=0;var fb=fbar();m.innerHTML=(fb?'<div class="fb" id="fb">'+fb+'</div>':'')+'<div id="ct"></div>';bindFb();body()}
