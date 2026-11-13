@@ -111,6 +111,94 @@ test('notify：HTML 被拒退純文字仍送進同一個話題；真的失敗會
   assert.match(l.error, /403/);
 });
 
+/* 可以「斷線」「卡住」的假 Telegram：behave(text, n) 回傳 'ok'、'drop'（直接斷線）、'hang'（不回應）、{ status, json } */
+function flakyTelegram(behave) {
+  const calls = [];
+  const server = http.createServer((req, res) => {
+    let b = '';
+    req.on('data', d => { b += d; });
+    req.on('end', () => {
+      const body = JSON.parse(b || '{}');
+      const n = calls.filter(c => c.text === body.text).length + 1;
+      calls.push({ text: body.text });
+      const act = behave(body.text, n);
+      if (act === 'drop') return req.socket.destroy();
+      if (act === 'hang') return;
+      const a = act === 'ok' ? { status: 200, json: { ok: true, result: {} } } : act;
+      res.writeHead(a.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(a.json));
+    });
+  });
+  return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, calls, url: `http://127.0.0.1:${server.address().port}` })));
+}
+const readLog = dir => fs.readFileSync(path.join(dir, fs.readdirSync(dir)[0]), 'utf8').trim().split('\n').map(JSON.parse);
+const files3 = (out, texts) => texts.forEach((t, i) => fs.writeFileSync(path.join(out, `telegram-${i + 1}-quiet.txt`), t));
+const FAST = { TELEGRAM_RETRY_MS: '10,10,10', TELEGRAM_TOPICS: '{}' };
+
+test('notify：連線中斷會自動重試，重試成功就當作送出；紀錄留下重試次數', async () => {
+  const { server, calls, url } = await flakyTelegram((t, n) => (n <= 2 ? 'drop' : 'ok'));
+  const out = tmp(), logs = tmp();
+  files3(out, ['AAA']);
+  const r = await run('src/notify.mjs', [out], { ...FAST, TELEGRAM_API: url, TELEGRAM_LOG_DIR: logs });
+  server.close();
+  assert.equal(r.code, 0, r.err);
+  assert.equal(calls.length, 3);
+  assert.match(r.out, /重試 2 次後成功/);
+  const l = readLog(logs);
+  assert.equal(l.length, 1);
+  assert.equal(l[0].ok, true);
+  assert.equal(l[0].retries, 2);
+});
+
+test('notify：429 依 retry_after 重試；5xx 也重試', async () => {
+  const a = await flakyTelegram((t, n) => (n === 1 ? { status: 429, json: { ok: false, description: 'Too Many Requests', parameters: { retry_after: 0 } } } : 'ok'));
+  const out = tmp(); files3(out, ['AAA']);
+  let r = await run('src/notify.mjs', [out], { ...FAST, TELEGRAM_API: a.url, TELEGRAM_LOG_DIR: tmp() });
+  a.server.close();
+  assert.equal(r.code, 0, r.err);
+  assert.equal(a.calls.length, 2);
+  const b = await flakyTelegram((t, n) => (n === 1 ? { status: 502, json: { ok: false, description: 'Bad Gateway' } } : 'ok'));
+  r = await run('src/notify.mjs', [out], { ...FAST, TELEGRAM_API: b.url, TELEGRAM_LOG_DIR: tmp() });
+  b.server.close();
+  assert.equal(r.code, 0, r.err);
+  assert.equal(b.calls.length, 2);
+});
+
+test('notify：一則一直送不出去，後面的訊息照樣發；最後以失敗結束，失敗那則寫進紀錄', async () => {
+  const { server, calls, url } = await flakyTelegram(t => (t === 'BAD' ? 'drop' : 'ok'));
+  const out = tmp(), logs = tmp();
+  files3(out, ['FIRST', 'BAD', 'LAST']);
+  const r = await run('src/notify.mjs', [out], { ...FAST, TELEGRAM_API: url, TELEGRAM_LOG_DIR: logs });
+  server.close();
+  assert.equal(r.code, 1);
+  assert.deepEqual(calls.map(c => c.text), ['FIRST', 'BAD', 'BAD', 'BAD', 'BAD', 'LAST']);   /* BAD 試 4 次（1＋重試 3） */
+  assert.match(r.err, /1 則沒發出去/);
+  const l = readLog(logs);
+  assert.deepEqual(l.map(x => x.ok), [true, false, true]);
+  assert.match(l[1].error, /^network:/);
+  assert.equal(l[1].retries, 3);
+  assert.equal(l[1].text, 'BAD');
+});
+
+test('notify：400／403 這類重試也沒用的錯誤不重試', async () => {
+  const { server, calls, url } = await flakyTelegram(() => ({ status: 403, json: { ok: false, description: 'Forbidden: bot was kicked' } }));
+  const out = tmp(); files3(out, ['AAA']);
+  const r = await run('src/notify.mjs', [out], { ...FAST, TELEGRAM_API: url, TELEGRAM_LOG_DIR: tmp() });
+  server.close();
+  assert.equal(r.code, 1);
+  assert.equal(calls.length, 1);
+});
+
+test('notify：伺服器卡住不回應會逾時並重試，不會讓整輪卡死', async () => {
+  const { server, calls, url } = await flakyTelegram(() => 'hang');
+  const out = tmp(), logs = tmp(); files3(out, ['AAA']);
+  const r = await run('src/notify.mjs', [out], { ...FAST, TELEGRAM_RETRY_MS: '10', TELEGRAM_TIMEOUT_MS: '150', TELEGRAM_API: url, TELEGRAM_LOG_DIR: logs });
+  server.closeAllConnections(); server.close();
+  assert.equal(r.code, 1);
+  assert.equal(calls.length, 2);
+  assert.match(readLog(logs)[0].error, /^network:/);
+});
+
 test('notify：沒設定 token 或 chat id 就略過', async () => {
   const r = await run('src/notify.mjs', [tmp()], { TELEGRAM_BOT_TOKEN: '', TELEGRAM_CHAT_ID: '' });
   assert.equal(r.code, 0);
