@@ -157,7 +157,7 @@ const crossOf = cs => cs ? {
 async function dashboard(env) {
   const list = await gh(env, `/repos/${REPO}/issues?labels=${LABEL}&state=all&per_page=50`);
   const by = t => list.find(i => i.title === t);
-  const [hs, ss, ls, cs, sn, sw, qs, ps, ds, rs, cds, gs] = await Promise.all([
+  const [hs, ss, ls, cs, sn, sw, qs, ps, ds, rs, cds, gs, sc] = await Promise.all([
     stateOf(by('盤中爆量')?.body, 'HOURLY_STATE'),
     stateOf(by('短線清單')?.body, 'WATCHLIST_STATE'),
     stateOf(by('布局清單')?.body, 'LAYOUT_STATE'),
@@ -169,7 +169,8 @@ async function dashboard(env) {
     stateOf(by('沉睡甦醒')?.body, 'DORMANT_STATE'),
     stateOf(by('借幣利率')?.body, 'RATE_STATE'),
     stateOf(by('金叉清單（日線）')?.body, 'CROSSD_STATE'),
-    stateOf(by('做空候選')?.body, 'GAINER_STATE')
+    stateOf(by('做空候選')?.body, 'GAINER_STATE'),
+    stateOf(by('訊號成績')?.body, 'SCORE_STATE')
   ]);
   const urls = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '做空候選', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性', WATCH_TITLE].map(t => [t, by(t)?.html_url || null]));
   const updated = Object.fromEntries(['盤中爆量', '盤中預警', '沉睡甦醒', '借幣利率', '做空候選', '短線清單', '布局清單', '金叉清單', '金叉清單（日線）', '掃流動性'].map(t => [t, by(t)?.updated_at || null]));
@@ -194,6 +195,7 @@ async function dashboard(env) {
       active: (ls.active || []).map(c => pick(c, ['base', 'cat', 'day', 'dayT', 'entry', 'last', 'ret', 'ex', 'mae', 'mfe', 'age', 'spiked', 'single', 'venues', 'syms', 'ref', 'respikes', 'quiet', 'qlim', 'atrp', 'chgDay'])),
       closed: (ls.closed || []).slice(-100)
     } : null,
+    score: sc || null,
     cross: crossOf(cs),
     crossD: crossOf(cds),
     quiet: qs ? { items: qs.items || [], done: (qs.done || []).slice(-300) } : null,
@@ -437,13 +439,13 @@ a{color:var(--acc)}
 .it{padding:8px 10px}
 </style></head><body>
 <header><div class="hd"><h1>signmonitor</h1>
-<nav id="tabs"><button data-t="home">總覽</button><button data-t="hourly">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="cross">金叉</button><button data-t="gainer">做空候選</button><button data-t="rate">借幣利率</button><button data-t="watch">自選</button></nav>
+<nav id="tabs"><button data-t="home">總覽</button><button data-t="hourly">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="cross">金叉</button><button data-t="gainer">做空候選</button><button data-t="rate">借幣利率</button><button data-t="score">成績</button><button data-t="watch">自選</button></nav>
 <span class="upd" id="upd"></span><button class="btn" id="reload">重新整理</button></div></header>
 <main id="main"><div class="empty">讀取中…</div></main>
 <script>
 var D=null,TAB='home',PW='',CNT=null;
 try{PW=localStorage.getItem('sm_pw')||''}catch(e){}
-try{var _t=localStorage.getItem('sm_tab');if(/^(home|hourly|short|layout|cross|rate|gainer|watch)$/.test(_t||''))TAB=_t}catch(e){}
+try{var _t=localStorage.getItem('sm_tab');if(/^(home|hourly|short|layout|cross|rate|gainer|score|watch)$/.test(_t||''))TAB=_t}catch(e){}
 function lsg(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lss(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 /* 篩選與排序：預設值；使用者改過的存在瀏覽器，重新整理後保留（搜尋字不保留） */
@@ -992,6 +994,55 @@ function gainer(){
 
 /* ---------- 自選 ---------- */
 var VC={};
+/* ---------- 訊號成績：每筆訊號之後 4／24／72 小時的實際走勢（src/score.mjs） ---------- */
+var SCK={hourly:'盤中爆量',est:'盤中推算',pre:'預警',dormant:'沉睡甦醒',rate:'借幣利率',cross:'4H 金叉',crossd:'日線金叉',gainer:'做空候選轉弱'},SCC={'加密':'crypto','股票':'stock','商品':'comm'};
+var SC=lsg('sm_sc',{w:'all',h:'24'});if(!/^(7|30|all)$/.test(SC.w))SC.w='all';if(!/^(4|24|72)$/.test(SC.h))SC.h='24';
+function scSeg(k,opts){return '<span class="seg">'+opts.map(function(o){return '<button data-sc="'+k+'" data-v="'+o[0]+'" class="'+(SC[k]===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
+/* 樣本不足（<30 筆）的數字灰字 */
+function scV(st,v){var x=pc100(v);return st&&st.n>=30?x:'<span class="cat" title="樣本少於 30 筆，僅供參考">'+(v==null?'—':(v>=0?'+':'')+Number(v).toFixed(1)+'%')+'</span>'}
+function scN(st){return st&&st.n?(st.n>=30?String(st.n):'<span class="cat">'+st.n+'</span>'):'0'}
+function scW(st){return st&&st.n?(st.n>=30?st.win.toFixed(0)+'%':'<span class="cat">'+st.win.toFixed(0)+'%</span>'):'—'}
+function scC(v){return v===1?'<span class="up">都正</span>':v===-1?'<span class="dn">都負</span>':v===0?'<span class="cat">不一致</span>':'<span class="cat">樣本不足</span>'}
+function scLink(r){var v=r.v,b=r.b;if(r.k==='cross'||r.k==='crossd')return link(b,bn(b+'USDT'));if(!v||!TVX[v])return link(b,null);return link(b,tv(v,v==='okx'?b+'-USDT-SWAP':b+'USDT','60'))}
+function score(){
+  CNT=null;var X=D.score;if(!X)return '<div class="empty">訊號成績還沒產生（下一個整點跑完後出現）</div>';
+  var W=X.win[SC.w]||X.win.all,h=SC.h;
+  var ctl='<div class="fb">'+scSeg('w',[['7','近 7 天'],['30','近 30 天'],['all','全部']])+scSeg('h',[['4','持有 4h'],['24','24h'],['72','72h']])+'<span class="cnt">'+X.total+' 筆，更新 '+tpe(X.at)+'</span></div>';
+  var meta='<div class="meta">把每則推播裡的訊號補上之後的實際走勢（紀錄起點 '+(X.first?tpe(X.first):'—')+'）。進場＝訊號那根 1H K 收盤價（盤中推算用推播的價格）；報酬以<b>做多</b>計算，做空候選以做空計算。<b>超額</b>＝減掉同時段 BTC（加密）或 QQQ（股票），正的才代表訊號本身比大盤好；勝率扣 0.2% 成本。<b>前後一致</b>＝把這段期間分成前後兩半，超額同方向才算（每半至少 15 筆）。<b>反向做空</b>＝訊號價放空、10% 停損、到期平倉、扣成本的平均報酬。<b>獨立時段</b>＝同一小時多檔一起爆量只算一次，數字小代表其實只是少數幾次大盤事件。灰字＝樣本少於 30 筆。只統計已發生的走勢，一兩週的資料很容易只是那段行情的特性。</div>';
+  var kr=W.kinds.filter(function(r){return r.h[h]&&r.h[h].n});
+  var kc=[{l:'訊號',v:function(r){return '<div class="c0w"><b>'+SCK[r.k]+'</b>'+CT(SCC[r.c])+(r.k==='gainer'?'<span class="cat">做空</span>':'')+'</div>'}},
+    {l:'筆數',n:1,v:function(r){return scN(r.h[h])}},
+    {l:'平均',n:1,v:function(r){return scV(r.h[h],r.h[h].avg)}},
+    {l:'中位數',n:1,v:function(r){return scV(r.h[h],r.h[h].med)}},
+    {l:'獨立時段',ml:'時段',n:1,h:'同一小時一起爆量的多檔算一次；這個數字太小＝其實只是少數幾次大盤事件',v:function(r){return String(r.h[h].nh||0)}},
+    {l:'勝率',n:1,v:function(r){return scW(r.h[h])}},
+    {l:'超額',n:1,h:'報酬減同時段 BTC／QQQ',v:function(r){return scV(r.h[h],r.h[h].ex)}},
+    {l:'反向做空',n:1,h:'訊號價放空、10% 停損、到期平倉、扣成本',v:function(r){return r.h[h].fd==null?'—':scV(r.h[h],r.h[h].fd)}},
+    {l:'期間最大有利',ml:'最大有利',n:1,m:1,v:function(r){return scV(r.h[h],r.h[h].up)}},
+    {l:'期間最大不利',ml:'最大不利',n:1,m:1,v:function(r){return scV(r.h[h],r.h[h].dn)}},
+    {l:'前後一致',v:function(r){return scC(r.cons[h])}}];
+  var fr=W.feats.filter(function(f){return f.yes[h]&&f.yes[h].n});
+  var fc=[{l:'條件（盤中爆量）',v:function(f){return '<div class="c0w">'+CT(SCC[f.c])+'<span>'+esc(f.label)+'</span></div>'}},
+    {l:'有：筆數',n:1,v:function(f){return scN(f.yes[h])}},
+    {l:'有：平均',n:1,v:function(f){return scV(f.yes[h],f.yes[h].avg)}},
+    {l:'有：超額',n:1,v:function(f){return scV(f.yes[h],f.yes[h].ex)}},
+    {l:'有：勝率',n:1,v:function(f){return scW(f.yes[h])}},
+    {l:'有：反向做空',n:1,h:'訊號價放空、10% 停損、到期平倉、扣成本',v:function(f){return f.yes[h].fd==null?'—':scV(f.yes[h],f.yes[h].fd)}},
+    {l:'沒有：筆數',n:1,m:1,v:function(f){return scN(f.no[h])}},
+    {l:'沒有：超額',n:1,v:function(f){return scV(f.no[h],f.no[h].ex)}},
+    {l:'有：前後一致',ml:'前後一致',v:function(f){return scC(f.cons[h])}}];
+  var rc=[{l:'代號',v:function(r){return '<div class="c0w">'+scLink(r)+CT(SCC[r.c])+'<span class="cat">'+SCK[r.k]+'</span>'+(r.w?'<span class="star" title="自選">★</span>':'')+(r.tg||[]).map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join('')+'</div>'}},
+    {l:'訊號時間',ml:'時間',v:function(r){return tpe(r.t)}},
+    {l:'1H',n:1,v:function(r){return r.ch==null?'—':pc100(r.ch)}},
+    {l:'倍數',n:1,v:function(r){return r.x==null?'—':r.x+'x'}},
+    {l:'4h',n:1,v:function(r){return pc(r.r4)}},
+    {l:'24h',n:1,v:function(r){return pc(r.r24)}},
+    {l:'72h',n:1,v:function(r){return pc(r.r72)}},
+    {l:'24h 最高／最低',ml:'24h 高／低',n:1,v:function(r){return r.up24==null?'—':pc(r.up24)+'／'+pc(r.dn24)}}];
+  return ctl+'<div class="vs">'+meta+
+    panel('各訊號成績 <small>'+({'7':'近 7 天','30':'近 30 天',all:'全部'})[SC.w]+'，持有 '+h+' 小時</small>',table('sck',kr,kc,'這段期間還沒有結果'),'fix')+
+    panel('盤中爆量細分 <small>有這個條件 vs 沒有；超額為負＝比大盤差</small>',table('scf',fr,fc,'這段期間還沒有結果'),'fix')+
+    panel('最近結果 <small>做多報酬，最近 120 筆</small>',table('scr',X.recent,rc,'還沒有結果'),'grow mh')+'</div>'}
 function watch(){
   CNT=null;
   var rec=(D.hourly?D.hourly.recent:[]).filter(hW);
@@ -1038,7 +1089,7 @@ function bindWatch(){
   $('pwsave').onclick=function(){PW=$('pw').value.trim();try{localStorage.setItem('sm_pw',PW)}catch(e){}$('pwcard').style.display=PW?'none':'flex'}}
 
 /* ---------- 畫面 ---------- */
-var VIEWS={home:home,hourly:hourly,short:short,layout:layout,cross:cross,rate:rate,gainer:gainer,watch:watch};
+var VIEWS={home:home,hourly:hourly,short:short,layout:layout,cross:cross,rate:rate,gainer:gainer,score:score,watch:watch};
 function counts(){var h=D.hourly,x=D.short,l=D.layout,c=D.cross;return {home:todo().length,hourly:h?h.recent.length:0,short:x?x.open.length+x.pending.length:0,layout:l?l.active.length:0,cross:(c?c.active.length+c.recentB.length:0)+(D.crossD?D.crossD.active.length+D.crossD.recentB.length:0),watch:(D.watch||[]).length,gainer:D.gainer?D.gainer.items.length:0,rate:D.rate?D.rate.events.length:0}}
 function tabs(){if(!D)return;var n=counts();document.querySelectorAll('#tabs button').forEach(function(b){var i=b.querySelector('i');if(!i){i=document.createElement('i');b.appendChild(i)}i.textContent=n[b.dataset.t]||''})}
 function body(){var c=$('ct');if(!c)return;c.innerHTML=VIEWS[TAB]();updCnt();bindCt()}
@@ -1057,7 +1108,8 @@ function bindFb(){
 function bindCt(){
   document.querySelectorAll('#ct th[data-sk]').forEach(function(h){h.onclick=function(){var t=h.dataset.tb,k=h.dataset.sk,c=colOf(t,k);
     if(S[t].k===k)S[t].d*=-1;else S[t]={k:k,d:(c&&c.dd)||-1};saveS();syncSort();body()}});
-  if(TAB==='watch')bindWatch()}
+  if(TAB==='watch')bindWatch();
+  if(TAB==='score')document.querySelectorAll('#ct [data-sc]').forEach(function(b){b.onclick=function(){SC[b.dataset.sc]=b.dataset.v;lss('sm_sc',SC);body()}})}
 function load(){
   $('reload').disabled=true;
   fetch('/api/data').then(function(r){return r.json()}).then(function(j){if(j.error)throw new Error(j.error);D=j;

@@ -98,6 +98,7 @@ jobs:
             await ensure("沉睡甦醒", "dormant-body.md", "dormant_");
             await ensure("借幣利率", "rate-body.md", "rate_");
             await ensure("做空候選", "gainer-body.md", "gainer_");
+            await ensure("訊號成績", "score-body.md", "score_");
 
       - name: Restore Bybit daily cache
         if: ${{ inputs.mode != 'intrahour' }}
@@ -235,12 +236,35 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node src/notify.mjs out
 
-      # 把這輪發出的 Telegram 訊息（logs/telegram/）、OI 紀錄（data/oi/）、借幣利率紀錄（data/rates/）、分級層紀錄與狀態（logs/tier/、data/tier/）存回 repo，失敗不影響監控本身。
+      # 訊號成績：把發送紀錄裡的每筆訊號補上之後 4／24／72 小時的實際走勢，統計哪種訊號真的會賺錢。
+      # 排在推播之後，不會拖慢通知；獨立步驟，失敗不影響監控。config/score.json 的 enabled 改 false 即關閉。
+      - name: Signal scorecard
+        if: ${{ always() && inputs.mode != 'intrahour' }}
+        continue-on-error: true
+        timeout-minutes: 8
+        run: node src/score-scan.mjs --log-dir logs/telegram --dir data/score --out out
+
+      - name: Update scorecard issue
+        if: ${{ always() && inputs.mode != 'intrahour' && hashFiles('out/score-body.md') != '' }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          SCORE_NUMBER: ${{ steps.issue.outputs.score_number }}
+        with:
+          script: |
+            const fs = require("fs");
+            await github.rest.issues.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: Number(process.env.SCORE_NUMBER),
+              body: fs.readFileSync("out/score-body.md", "utf8"),
+            });
+
+      # 把這輪發出的 Telegram 訊息（logs/telegram/）、OI 紀錄（data/oi/）、借幣利率紀錄（data/rates/）、分級層紀錄與狀態（logs/tier/、data/tier/）、訊號成績（data/score/）存回 repo，失敗不影響監控本身。
       - name: Save Telegram log
         if: ${{ always() }}
         continue-on-error: true
         run: |
-          for d in logs/telegram logs/tier data/oi data/rates data/tier; do if [ -d "$d" ]; then git add "$d"; fi; done
+          for d in logs/telegram logs/tier data/oi data/rates data/tier data/score; do if [ -d "$d" ]; then git add "$d"; fi; done
           if git diff --cached --quiet; then echo "沒有新的發送紀錄"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
