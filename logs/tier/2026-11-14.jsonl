@@ -2,3 +2,4 @@
 {"time":"2026-11-14T01:00+08:00","run":"43466839259","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":228},{"k":"hourly","chars":256},{"k":"pre","chars":1156},{"k":"dormant","chars":538}],"deferred":[],"resonance":[],"digest":[],"pending":2}
 {"time":"2026-11-14T02:00+08:00","run":"43476851812","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":234},{"k":"hourly","chars":1213},{"k":"pre","chars":1554}],"deferred":[],"resonance":[],"digest":[],"pending":2}
 {"time":"2026-11-14T03:00+08:00","run":"43485998409","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":990},{"k":"pre","chars":1544}],"deferred":[],"resonance":[],"digest":[],"pending":2}
+{"time":"2026-11-14T04:00+08:00","run":"43496038293","mode":"legacy","sent":"legacy","immediate":[{"k":"pre","chars":1542},{"k":"events","chars":582}],"deferred":[],"resonance":[],"digest":[],"pending":2}
