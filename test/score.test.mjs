@@ -143,3 +143,25 @@ test('爆發標記成績：候選／可略過分組、爆發率', () => {
   assert.equal(by.skip.b30, 0); assert.equal(by.mid.n, 1);
   assert.match(SC.renderMd(SC.summarize(recs, now)), /爆發標記/);
 });
+
+test('轉弱新舊規則並行：解析 logs/gainer、勿空子集合、Issue 有比較表', () => {
+  const t = tw('2026-11-13 20:00');
+  assert.equal(SC.parseShadow({ k: 'x', b: 'A', t, src: ['okx', 'A'] }), null);
+  assert.equal(SC.parseShadow({ k: 'gnew', b: 'A', t }), null);
+  const n = SC.parseShadow({ t, k: 'gnew', b: 'AKE', tfs: ['1h'], avoid: 1, src: ['okx', 'AKE-USDT-SWAP'] });
+  assert.deepEqual(n, { k: 'gnew', b: 'AKE', c: '加密', t, tg: ['勿空', '1H'], v: ['okx'], src: ['okx', 'AKE-USDT-SWAP'], id: `gnew|AKE|${t}|okx` });
+  const o = SC.parseShadow({ t, k: 'gold', b: 'BBB', tfs: ['4h'], avoid: 0, src: ['bitget', 'BBBUSDT'] });
+  /* 做空計算：跌＝賺 */
+  const recs = [{ ...n, e: 1, st: t, m: { 4: [0.1, 0.2, -0.01, 0], 24: [0.2, 0.3, -0.01, 0] } },
+    { ...o, e: 1, st: t, m: { 4: [-0.05, 0.01, -0.06, 0], 24: [-0.1, 0.01, -0.12, 0] } },
+    { ...SC.parseShadow({ t, k: 'gold', b: 'AKE', tfs: ['1h'], avoid: 1, src: ['okx', 'AKE-USDT-SWAP'] }), e: 1, st: t, m: { 4: [0.1, 0.2, -0.01, 0] } }];
+  const sum = SC.summarize(recs, t + 30 * H);
+  const k = x => sum.win.all.kinds.find(r => r.k === x);
+  assert.equal(k('gnew').h[4].n, 1); assert.equal(k('gnew').h[4].avg, -10);
+  assert.equal(k('gnewp'), undefined);                                    /* 新規則只有勿空那筆 → 子集合為空 */
+  assert.equal(k('gold').h[4].n, 2);
+  assert.equal(k('goldp').h[4].n, 1); assert.equal(k('goldp').h[4].avg, 5);
+  const md = SC.renderMd(sum);
+  assert.match(md, /新舊規則並行/);
+  assert.match(md, /\| 轉弱・舊規則（排除勿空） \| 1 \| \+5\.00% \|/);
+});

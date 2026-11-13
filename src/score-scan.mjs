@@ -1,5 +1,6 @@
 /* 訊號成績單的執行入口（見 src/score.mjs）。
    node src/score-scan.mjs --log-dir logs/telegram --dir data/score --out out
+   另讀 logs/gainer/（做空候選轉弱的新舊規則並行紀錄，含沒推播的勿空；--gainer-log 可改路徑）
    - data/score/open.jsonl：還在等 72 小時結果的紀錄（一行一筆）
    - data/score/done/YYYY-MM.jsonl：已結案的紀錄（只追加）
    - data/score/state.json：已處理過的發送批次（run）
@@ -14,7 +15,7 @@ const H = SC.H;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function args(argv) { const o = {}; for (let i = 2; i < argv.length; i += 2) o[argv[i].replace(/^--/, '')] = argv[i + 1]; return o; }
 const A = args(process.argv);
-const LOG = A['log-dir'] || 'logs/telegram', DIR = A.dir || 'data/score', OUT = A.out || 'out';
+const LOG = A['log-dir'] || 'logs/telegram', GLOG = A['gainer-log'] || 'logs/gainer', DIR = A.dir || 'data/score', OUT = A.out || 'out';
 const CFG = A.config || 'config/score.json';
 const readJsonl = f => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : [];
 
@@ -65,6 +66,15 @@ async function main() {
       open.set(s.id, s); added++;
     }
   }
+  /* 1b. 轉弱新舊規則並行紀錄（logs/gainer/）：每行一筆，用 id 記住處理過的，避免結案後又被讀回來 */
+  st.g = st.g || {};
+  const gfiles = fs.existsSync(GLOG) ? fs.readdirSync(GLOG).filter(f => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f) && f.slice(0, 10) >= cutoff).sort() : [];
+  for (const d of gfiles.flatMap(f => readJsonl(path.join(GLOG, f)))) {
+    const s = SC.parseShadow(d);
+    if (!s || st.g[s.id] || open.has(s.id) || now - s.t > 84 * H) continue;
+    st.g[s.id] = s.t; open.set(s.id, s); added++;
+  }
+  for (const [k, t] of Object.entries(st.g)) if (now - t > 8 * 864e5) delete st.g[k];
   for (const [k, t] of Object.entries(st.runs)) if (now - t > 8 * 864e5) delete st.runs[k];
   st.init = true;
 

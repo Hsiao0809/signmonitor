@@ -52,15 +52,45 @@ test('名單：Bybit 單獨有合約時沒有 K 線來源；Bybit 與 OKX 同時
 const mk1h = (arr, end = T) => arr.map(([o, h, l, c], i) => ({ t: end - (arr.length - i) * H, o, h, l, c }));
 const RUN = [[1, 1.1, 0.98, 1.08], [1.08, 1.2, 1.05, 1.18], [1.18, 1.4, 1.15, 1.35], [1.35, 1.6, 1.3, 1.5], [1.5, 1.55, 1.42, 1.45], [1.45, 1.5, 1.4, 1.46], [1.46, 1.5, 1.41, 1.47], [1.47, 1.52, 1.43, 1.48]];
 
-test('轉弱：收盤跌破前一根低點、且最高點沒有再創高', () => {
-  assert.equal(G.weakOf(mk1h(RUN), '1h', T), null);                      /* 最後一根沒跌破 */
+test('舊規則（只並行記錄）：收盤跌破前一根低點、且最高點沒有再創高', () => {
+  assert.equal(G.weakPrev(mk1h(RUN), '1h', T), null);                    /* 最後一根沒跌破 */
   const weak = [...RUN, [1.48, 1.49, 1.3, 1.32]];
-  const w = G.weakOf(mk1h(weak), '1h', T);
+  const w = G.weakPrev(mk1h(weak), '1h', T);
   assert.equal(w.tf, '1h'); assert.equal(w.brk, 1.43); assert.equal(w.peak, 1.6);
   assert.equal(w.c, 1.32); assert.equal(w.drop, 17.5);
   /* 破低但同時創新高（外包 K）不算 */
   const outside = [...RUN, [1.48, 1.7, 1.3, 1.32]];
-  assert.equal(G.weakOf(mk1h(outside), '1h', T), null);
+  assert.equal(G.weakPrev(mk1h(outside), '1h', T), null);
+});
+
+test('轉弱（新規則）：收盤跌破高點之後整段回檔的最低點、且最高點沒有再創高', () => {
+  assert.equal(G.weakOf(mk1h(RUN), '1h', T), null);
+  /* 高點 1.6 之後的回檔低點是 1.40：收 1.32 跌破 */
+  const w = G.weakOf(mk1h([...RUN, [1.48, 1.49, 1.3, 1.32]]), '1h', T);
+  assert.equal(w.brk, 1.4); assert.equal(w.peak, 1.6); assert.equal(w.c, 1.32); assert.equal(w.drop, 17.5);
+  /* 跌破前一根低點 1.43、但沒跌破回檔低點 1.40：舊規則成立、新規則不成立 */
+  const inRange = [...RUN, [1.48, 1.49, 1.405, 1.41]];
+  assert.ok(G.weakPrev(mk1h(inRange), '1h', T));
+  assert.equal(G.weakOf(mk1h(inRange), '1h', T), null);
+  /* 外包 K（創新高）不算 */
+  assert.equal(G.weakOf(mk1h([...RUN, [1.48, 1.7, 1.3, 1.32]]), '1h', T), null);
+  /* 高點就是前一根：還沒有回檔區間，不算（舊規則會算） */
+  const atPeak = [...RUN.slice(0, 4), [1.5, 1.52, 1.2, 1.25]];
+  const pad = [[0.9, 0.95, 0.85, 0.9], [0.9, 0.95, 0.85, 0.9], [0.9, 0.95, 0.85, 0.9], ...atPeak];
+  assert.ok(G.weakPrev(mk1h(pad), '1h', T));
+  assert.equal(G.weakOf(mk1h(pad), '1h', T), null);
+});
+
+test('轉弱（新規則）：2026-11-13 AKE 實際 K 線，14:00 的 4H 與 20:00 的 1H 舊規則都成立、新規則都不成立', async () => {
+  const fs = await import('node:fs');
+  const fx = JSON.parse(fs.readFileSync(new URL('./fixtures/ake-2026-11-13.json', import.meta.url)));
+  const b = a => a.map(([t, o, h, l, c]) => ({ t, o, h, l, c }));
+  const T20 = Date.UTC(2026, 10, 13, 12), T14 = T20 - 6 * H;
+  assert.equal(G.weakPrev(b(fx.h4), '4h', T14).c, 0.002633);
+  assert.equal(G.weakOf(b(fx.h4), '4h', T14), null);
+  assert.equal(G.weakPrev(b(fx.h1), '1h', T20).c, 0.006143);
+  assert.equal(G.weakOf(b(fx.h1), '1h', T20), null);
+  for (const t of [T20 + H, T20 + 2 * H]) assert.equal(G.weakOf(b(fx.h1), '1h', t), null);   /* 之後兩小時仍在區間內 */
 });
 
 test('轉弱：未收盤的 K 不算、資料太少不判斷', () => {
@@ -129,14 +159,35 @@ test('通知：同一檔 1H、4H 同時轉弱合成一筆；同一根 K 不重�
   assert.deepEqual(e4[0].tfs, ['4h', '1h']);
 });
 
-test('通知：標籤帶「勿空」照樣通知（只標記）；沒轉弱的不通知；按漲幅排序', () => {
+test('通知：帶「勿空」的轉弱不推播、只記在轉弱紀錄（muted）；沒轉弱的不通知；按漲幅排序', () => {
   const st = G.emptyGainer();
   const a = weakItem('AAA', ['1h']); a.tags = ['spike']; a.chgMax = 50;
   const b = weakItem('BBB', ['4h']); b.chgMax = 150;
+  const d = weakItem('DDD', ['1h']); d.tags = ['wide', 'solo']; d.chgMax = 90;
   const c = weakItem('CCC', []);
-  const ev = G.applyScan(st, [a, b, c], T);
-  assert.deepEqual(ev.map(e => e.base), ['BBB', 'AAA']);
-  assert.ok(G.isAvoid(ev[1].tags));
+  const ev = G.applyScan(st, [a, b, c, d], T);
+  assert.deepEqual(ev.map(e => e.base), ['BBB', 'DDD']);                 /* 停損過寬、單家不是勿空，照推 */
+  assert.deepEqual(st.events.map(e => [e.base, !!e.muted]), [['BBB', false], ['DDD', false], ['AAA', true]]);
+  assert.ok(st.events.every(e => e.rule === 'range'));
+  assert.ok(st.items.find(i => i.key === 'AAA'));                         /* 名單照列 */
+  /* 同一根 K 下一小時不會因為勿空沒推而再推 */
+  a.tags = [];
+  assert.equal(G.applyScan(st, [a], T + H).length, 0);
+  const md = G.gainerMarkdown(st, { nowMs: T });
+  assert.match(md, /未推播（勿空）/);
+});
+
+test('並行紀錄：新舊規則各一筆、含勿空、同一根 K 不重複、冷卻與推播一致', () => {
+  const st = G.emptyGainer();
+  const a = weakItem('AAA', ['1h', '4h']); a.weakOld = { '1h': { tf: '1h', t: T - H, c: 1.3, brk: 1.43, peak: 1.6 } }; a.tags = ['spike'];
+  const b = weakItem('BBB', []); b.weakOld = { '4h': { tf: '4h', t: T - 4 * H, c: 2, brk: 2.1, peak: 2.5 } };
+  const n = weakItem('NOK', ['1h']); n.kex = null; n.kid = null;
+  const r1 = G.shadowOf(st, [a, b, n], T);
+  assert.deepEqual(r1.map(x => [x.k, x.b, x.tfs.join('+'), x.avoid]), [['gnew', 'AAA', '4h+1h', 1], ['gold', 'AAA', '1h', 1], ['gold', 'BBB', '4h', 0]]);
+  assert.deepEqual(r1[0].src, ['okx', 'AAA-USDT-SWAP']);
+  assert.equal(G.shadowOf(st, [a, b], T + H).length, 0);                 /* 同一根 K／冷卻內 */
+  G.shadowOf(st, [], T + 8 * 24 * H);
+  assert.deepEqual(st.shadow, {});
 });
 
 test('上榜時間：連續在榜保留、離開超過 6 小時再上榜重算、48 小時沒出現清掉', () => {
@@ -160,13 +211,15 @@ test('通知：紀錄與冷卻記錄只留 7 天', () => {
 test('文字：通知訊息含標籤、勿空標示、停損；沒有事件回空字串', () => {
   assert.equal(G.gainerAlertText([], T), '');
   const st = G.emptyGainer();
-  const it = weakItem('AAA', ['4h', '1h']); it.tags = ['wake', 'wide'];
+  const it = weakItem('AAA', ['4h', '1h']); it.tags = ['solo', 'wide'];
   const ev = G.applyScan(st, [it], T);
   const t = G.gainerAlertText(ev, T, 'https://example.com/issues/1');
   assert.match(t, /【做空候選・轉弱】11-12 12:00/);
   assert.match(t, /4H＋1H 轉弱/);
   assert.match(t, /24h \+80\.0%/);
-  assert.match(t, /⚠ .*勿空.*停損過寬/);
+  assert.match(t, /跌破高點後回檔低點 1\.400/);
+  assert.match(t, /單一交易所大漲.*停損過寬/);
+  assert.doesNotMatch(t, /勿空/);
   assert.match(t, /停損（24h 高）1\.600（距現價 23\.1%）/);
   assert.match(t, /example\.com\/issues\/1/);
 });
@@ -243,7 +296,7 @@ test('整合：K 線大多失敗要警告', async () => {
 
 test('文字：每檔一個段落，12 檔也能依空行切成不超過上限的幾則（連結標記不被切斷）', async () => {
   const st = G.emptyGainer();
-  const items = Array.from({ length: 12 }, (_, i) => { const it = weakItem(`LONGNAME${i}`, ['4h', '1h']); it.tags = ['spike', 'wake', 'layout', 'solo', 'wide']; return it; });
+  const items = Array.from({ length: 12 }, (_, i) => { const it = weakItem(`LONGNAME${i}`, ['4h', '1h']); it.tags = ['solo', 'wide']; return it; });
   const t = G.gainerAlertText(G.applyScan(st, items, T), T, 'https://example.com/issues/1');
   const blocks = t.split('\n\n');
   assert.equal(blocks.length, 14);                       /* 標題＋12 檔＋結尾 */

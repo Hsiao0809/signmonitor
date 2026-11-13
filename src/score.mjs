@@ -23,7 +23,12 @@ export const KINDS = {
   rate: { l: '借幣利率', dir: 1 },
   cross: { l: '4H 金叉', dir: 1 },
   crossd: { l: '日線金叉', dir: 1 },
-  gainer: { l: '做空候選轉弱', dir: -1 }
+  gainer: { l: '做空候選轉弱', dir: -1 },
+  /* 轉弱新舊規則並行（logs/gainer/，2026-11-13 起；含沒推播的勿空）。of：由同一批紀錄篩出的子集合 */
+  gnew: { l: '轉弱・新規則（全部）', dir: -1 },
+  gnewp: { l: '轉弱・新規則（排除勿空＝實際推播）', dir: -1, of: r => r.k === 'gnew' && !(r.tg || []).includes('勿空') },
+  gold: { l: '轉弱・舊規則（全部）', dir: -1 },
+  goldp: { l: '轉弱・舊規則（排除勿空）', dir: -1, of: r => r.k === 'gold' && !(r.tg || []).includes('勿空') }
 };
 export const CLS = { '加密': 'crypto', '股票': 'stock', '商品': 'comm' };
 
@@ -142,6 +147,13 @@ export function parseRun(parts) {
   }
   for (const s of out) s.id = `${s.k}|${s.b}|${s.t}|${(s.v || [])[0] || ''}`;
   return out;
+}
+
+/** 轉弱並行紀錄（logs/gainer/ 的一行，見 gainer.mjs shadowOf）→ 訊號；K 線來源直接用紀錄裡的合約 */
+export function parseShadow(d) {
+  if (!d || (d.k !== 'gnew' && d.k !== 'gold') || !d.b || !isFinite(d.t) || !Array.isArray(d.src)) return null;
+  const tg = [...(d.avoid ? ['勿空'] : []), ...(d.tfs || []).map(t => String(t).toUpperCase())];
+  return { k: d.k, b: d.b, c: '加密', t: d.t, tg, v: [d.src[0]], src: d.src, id: `${d.k}|${d.b}|${d.t}|${d.src[0]}` };
 }
 
 /** 發送紀錄的行（已 JSON.parse）→ 依 run 分組；只收發送成功的 */
@@ -288,7 +300,8 @@ export function summarize(recs, now) {
     const rs = recs.filter(r => r.e != null && now - r.t <= days * 864e5);
     const kinds = [];
     for (const k of Object.keys(KINDS)) for (const c of ['加密', '股票', '商品']) {
-      const g = rs.filter(r => r.k === k && r.c === c);
+      const of = KINDS[k].of;
+      const g = rs.filter(r => (of ? of(r) : r.k === k) && r.c === c);
       if (!g.length) continue;
       kinds.push({ k, c, h: Object.fromEntries(HZ.map(h => [h, stat(g, h)])), cons: Object.fromEntries(HZ.map(h => [h, consistency(g, h)])) });
     }
@@ -330,10 +343,23 @@ export function renderMd(sum) {
   L.push('## 各訊號（全部期間，持有 24 小時）', '', '| 訊號 | 類別 | 筆數 | 獨立時段 | 平均 | 中位數 | 勝率 | 超額 | 反向做空 | 前後一致 |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---|');
   for (const r of w.kinds) {
     const s = r.h[24];
-    if (!s.n) continue;
+    if (!s.n || ['gnew', 'gnewp', 'gold', 'goldp'].includes(r.k)) continue;
     L.push(`| ${KINDS[r.k].l} | ${r.c} | ${s.n} | ${s.nh} | ${pct(s.avg)} | ${pct(s.med)} | ${s.win}% | ${pct(s.ex)} | ${pct(s.fd)} | ${r.cons[24] === 1 ? '都正' : r.cons[24] === -1 ? '都負' : r.cons[24] === 0 ? '不一致' : '樣本不足'} |`);
   }
   L.push('', '反向做空＝訊號價放空、10% 停損、到期平倉、扣成本的平均報酬。', '');
+  const gk = ['gnew', 'gnewp', 'gold', 'goldp'];
+  const gr = w.kinds.filter(r => gk.includes(r.k));
+  if (gr.length) {
+    L.push('## 做空候選轉弱：新舊規則並行（2026-11-13 起，以做空計算）', '', '| 規則 | 4h 筆數 | 4h 平均 | 4h 勝率 | 4h 最大不利 | 24h 筆數 | 24h 平均 | 24h 勝率 | 24h 最大不利 |', '|---|---:|---:|---:|---:|---:|---:|---:|---:|');
+    for (const k of gk) {
+      const r = gr.find(x => x.k === k);
+      if (!r) continue;
+      const a = r.h[4], b = r.h[24];
+      const f = s => s.n ? [s.n, pct(s.avg), `${s.win}%`, pct(s.dn)] : [0, '—', '—', '—'];
+      L.push(`| ${KINDS[k].l} | ${f(a).join(' | ')} | ${f(b).join(' | ')} |`);
+    }
+    L.push('', '新規則＝跌破高點後整段回檔的最低點；舊規則＝跌破前一根最低點。最大不利＝期間對空單最不利的漲幅。累積 2～3 週再決定要不要換規則。', '');
+  }
   if (w.marks && w.marks.length) {
     L.push('## 爆發標記（加密，持有 24 小時；2026-11-13 起）', '', '| 標記 | 筆數 | 爆發率（曾漲≥30%） | 平均 | 勝率 | 期間最大不利 |', '|---|---:|---:|---:|---:|---:|');
     for (const x of w.marks) { const t = x.h[24]; if (t.n) L.push(`| ${x.label} | ${t.n} | ${t.b30}% | ${pct(t.avg)} | ${t.win}% | ${pct(t.dn)} |`); }

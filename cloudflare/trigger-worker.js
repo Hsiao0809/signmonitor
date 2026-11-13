@@ -681,7 +681,7 @@ function gPx(o){return o.sv&&o.sid?LP(o.sv,o.sid):null}
 function gStop(o){var p=gPx(o)||o.px;return o.hi24&&p?(o.hi24/p-1)*100:null}
 function gExTxt(ex){return Object.keys(ex||{}).map(function(v){var x=ex[v];return (GVL[v]||v)+' '+pc100(typeof x==='object'?x.chg:x).replace(/<[^>]*>/g,'')}).join('／')}
 function gWeak(o){var w=o.weak||{};return (w['4h']?2:0)+(w['1h']?1:0)}
-function gWeakTag(o){var w=o.weak||{},l=[w['4h']?'4H':'',w['1h']?'1H':''].filter(Boolean);return l.length?'<span class="badge bs" title="已收盤的最後一根 K 跌破前一根最低點，且最高點沒有再創近期高點">'+l.join('＋')+' 轉弱</span>':'<span class="cat">—</span>'}
+function gWeakTag(o){var w=o.weak||{},l=[w['4h']?'4H':'',w['1h']?'1H':''].filter(Boolean);return l.length?'<span class="badge bs" title="已收盤的最後一根 K 收盤跌破高點之後整段回檔的最低點，且最高點沒有再創">'+l.join('＋')+' 轉弱</span>':'<span class="cat">—</span>'}
 COLS.gainer=function(){return [
   {k:'base',l:'代號',dd:1,s:function(o){return o.base},v:function(o){return '<div class="c0w">'+link(o.base,gTv(o))+CT(o.cat)+gTags(o.tags)+(inWatch(o.base)?'<span class="star" title="已在自選">★</span>':WA(o.base))+'</div>'}},
   {k:'weak',l:'轉弱',s:gWeak,v:gWeakTag},
@@ -694,7 +694,7 @@ COLS.gainer=function(){return [
 COLS.gevt=function(){return [
   {k:'base',l:'代號',dd:1,s:function(e){return e.base},v:function(e){return '<div class="c0w">'+link(e.base,gTv(e))+gTags(e.tags)+(inWatch(e.base)?'<span class="star" title="已在自選">★</span>':WA(e.base))+'</div>'}},
   {k:'t',l:'時間',s:function(e){return e.t},v:function(e){return tpe(e.t)}},
-  {k:'tf',l:'週期',v:function(e){return '<span class="badge bs">'+e.tfs.map(function(t){return t.toUpperCase()}).join('＋')+' 轉弱</span>'}},
+  {k:'tf',l:'週期',v:function(e){return '<span class="badge bs">'+e.tfs.map(function(t){return t.toUpperCase()}).join('＋')+' 轉弱</span>'+(e.rule==='range'?'':'<span class="cat" title="2026-11-13 前的舊規則：跌破前一根最低點">舊規則</span>')+(e.muted?'<span class="fl" title="有勿空標籤，只記在網頁、沒有推播">未推播</span>':'')}},
   {k:'chg',l:'24h 漲幅',n:1,s:function(e){return e.chg},v:function(e){return pc100(e.chg)},tt:function(e){return gExTxt(e.ex)}},
   {k:'drop',l:'自高點',n:1,s:function(e){return e.drop},v:function(e){return '-'+e.drop+'%'}},
   {k:'stop',l:'停損距離',h:'通知當下，24h 高點離現價的距離',n:1,s:function(e){return e.stop},v:function(e){return e.stop==null?'—':fp(e.hi24)+' <span class="'+(e.stop>10?'wtxt':'cat')+'">'+e.stop+'%</span>'}},
@@ -992,7 +992,7 @@ function rate(){
 function gainer(){
   var g=D.gainer;if(!g){CNT=null;return '<div class="empty">還沒有做空候選資料（下一個整點跑完後出現）</div>'}
   var f=F.gainer,P=function(o){return pass(f,{base:o.base,cat:o.cat||'crypto',vens:Object.keys(o.ex||{}),watch:inWatch(o.base)})};
-  var c=g.counts||{},meta='<div class="meta">各交易所 24h 漲幅榜：任一家排前 20、漲幅 ≥ 30%、成交額 ≥ 50 萬 USDT 就列入。漲幅高只是名單，不是進場訊號；<b>轉弱</b>＝已收盤的最後一根 K 收盤跌破前一根最低點，且最高點沒有再創近期高點（1H 看近 24 根、4H 看近 12 根），轉弱才推播。<span class="fl">勿空</span>＝24 小時內爆量、7 天內沉睡甦醒或布局清單追蹤中，可能是剛啟動的多方，只標記不過濾。轉弱只用 OKX、Bitget 的 K 線（Bybit 的 K 線擋雲端）。沒有回測。最近一次：'+(g.lastHour?tpe(g.lastHour):'—')+'（OKX '+(c.okx||0)+'、Bitget '+(c.bitget||0)+'、Bybit '+(c.bybit||0)+'、Binance 現貨 '+(c.binance||0)+' 檔）。</div>';
+  var c=g.counts||{},meta='<div class="meta">各交易所 24h 漲幅榜：任一家排前 20、漲幅 ≥ 30%、成交額 ≥ 50 萬 USDT 就列入。漲幅高只是名單，不是進場訊號；<b>轉弱</b>＝已收盤的最後一根 K 收盤跌破<b>高點之後整段回檔的最低點</b>，且最高點沒有再創（1H 看近 24 根、4H 看近 12 根；高點之後至少要有一根已收盤的 K），轉弱才推播。舊規則（跌破前一根最低點）11-13 起停推，新舊並行記到「成績」比較。<span class="fl">勿空</span>＝24 小時內爆量、7 天內沉睡甦醒或布局清單追蹤中，可能是剛啟動的多方；名單照列，這類轉弱只記在轉弱紀錄（標「未推播」），不推播。轉弱只用 OKX、Bitget 的 K 線（Bybit 的 K 線擋雲端）。沒有回測。最近一次：'+(g.lastHour?tpe(g.lastHour):'—')+'（OKX '+(c.okx||0)+'、Bitget '+(c.bitget||0)+'、Bybit '+(c.bybit||0)+'、Binance 現貨 '+(c.binance||0)+' 檔）。</div>';
   if(f.pane==='evt'){var el=g.events.filter(function(e){return P(e)&&(!f.avoid||!gAvoid(e.tags))});CNT=[el.length,g.events.length];
     return '<div class="vs">'+meta+panel('轉弱紀錄 <small>保留 7 天</small>',table('gevt',el,COLS.gevt(),'還沒有轉弱紀錄'),'grow')+'</div>'}
   var list=g.items.filter(function(o){return P(o)&&(!f.weak||gWeak(o))&&(!f.avoid||!gAvoid(o.tags))});CNT=[list.length,g.items.length];
@@ -1001,7 +1001,7 @@ function gainer(){
 /* ---------- 自選 ---------- */
 var VC={};
 /* ---------- 訊號成績：每筆訊號之後 4／24／72 小時的實際走勢（src/score.mjs） ---------- */
-var SCK={hourly:'盤中爆量',est:'盤中推算',pre:'預警',dormant:'沉睡甦醒',rate:'借幣利率',cross:'4H 金叉',crossd:'日線金叉',gainer:'做空候選轉弱'},SCC={'加密':'crypto','股票':'stock','商品':'comm'};
+var SCK={hourly:'盤中爆量',est:'盤中推算',pre:'預警',dormant:'沉睡甦醒',rate:'借幣利率',cross:'4H 金叉',crossd:'日線金叉',gainer:'做空候選轉弱',gnew:'轉弱・新規則（全部）',gnewp:'轉弱・新規則（排除勿空＝實際推播）',gold:'轉弱・舊規則（全部）',goldp:'轉弱・舊規則（排除勿空）'},SCC={'加密':'crypto','股票':'stock','商品':'comm'};
 var SC=lsg('sm_sc',{w:'all',h:'24'});if(!/^(7|30|all)$/.test(SC.w))SC.w='all';if(!/^(4|24|72)$/.test(SC.h))SC.h='24';
 function scSeg(k,opts){return '<span class="seg">'+opts.map(function(o){return '<button data-sc="'+k+'" data-v="'+o[0]+'" class="'+(SC[k]===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
 /* 樣本不足（<30 筆）的數字灰字 */
@@ -1016,7 +1016,7 @@ function score(){
   var ctl='<div class="fb">'+scSeg('w',[['7','近 7 天'],['30','近 30 天'],['all','全部']])+scSeg('h',[['4','持有 4h'],['24','24h'],['72','72h']])+'<span class="cnt">'+X.total+' 筆，更新 '+tpe(X.at)+'</span></div>';
   var meta='<div class="meta">把每則推播裡的訊號補上之後的實際走勢（紀錄起點 '+(X.first?tpe(X.first):'—')+'）。進場＝訊號那根 1H K 收盤價（盤中推算用推播的價格）；報酬以<b>做多</b>計算，做空候選以做空計算。<b>超額</b>＝減掉同時段 BTC（加密）或 QQQ（股票），正的才代表訊號本身比大盤好；勝率扣 0.2% 成本。<b>前後一致</b>＝把這段期間分成前後兩半，超額同方向才算（每半至少 15 筆）。<b>反向做空</b>＝訊號價放空、10% 停損、到期平倉、扣成本的平均報酬。<b>獨立時段</b>＝同一小時多檔一起爆量只算一次，數字小代表其實只是少數幾次大盤事件。灰字＝樣本少於 30 筆。只統計已發生的走勢，一兩週的資料很容易只是那段行情的特性。</div>';
   var kr=W.kinds.filter(function(r){return r.h[h]&&r.h[h].n});
-  var kc=[{l:'訊號',v:function(r){return '<div class="c0w"><b>'+SCK[r.k]+'</b>'+CT(SCC[r.c])+(r.k==='gainer'?'<span class="cat">做空</span>':'')+'</div>'}},
+  var kc=[{l:'訊號',v:function(r){return '<div class="c0w"><b>'+SCK[r.k]+'</b>'+CT(SCC[r.c])+(/^(gainer|gnew|gnewp|gold|goldp)$/.test(r.k)?'<span class="cat">做空</span>':'')+'</div>'}},
     {l:'筆數',n:1,v:function(r){return scN(r.h[h])}},
     {l:'平均',n:1,v:function(r){return scV(r.h[h],r.h[h].avg)}},
     {l:'中位數',n:1,v:function(r){return scV(r.h[h],r.h[h].med)}},

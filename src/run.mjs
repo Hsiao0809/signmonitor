@@ -364,6 +364,15 @@ async function main() {
       r.items.forEach(it => { it.tags = GN.tagsOf(it, ctx); });
       gevents = GN.applyScan(gstate, r.items, gHour, r.counts);
       gstats = r.counts;
+      /* 新舊轉弱規則並行紀錄（含沒推播的勿空），給訊號成績比較；寫到 logs/gainer/（台灣日期），由 workflow commit 回 repo */
+      try {
+        const sh = GN.shadowOf(gstate, r.items, gHour);
+        if (sh.length) {
+          const dir = a['gainer-log'] || 'logs/gainer';
+          fs.mkdirSync(dir, { recursive: true });
+          fs.appendFileSync(path.join(dir, `${new Date(gHour + 8 * HOUR).toISOString().slice(0, 10)}.jsonl`), sh.map(x => JSON.stringify(x)).join('\n') + '\n');
+        }
+      } catch (e) { gw.push(`轉弱並行紀錄寫入失敗：${e.message}`); }
       const weakNow = r.items.filter(it => Object.keys(it.weak || {}).length).length;
       const gnote = `最近一次檢查：${T.tpe(gHour)} 台灣時間；OKX ${r.counts.okx} 檔、Bitget ${r.counts.bitget} 檔、Bybit ${r.counts.bybit} 檔、Binance 現貨 ${r.counts.binance} 檔，名單 ${r.items.length} 檔，目前轉弱 ${weakNow} 檔，本輪通知 ${gevents.length} 檔`;
       fs.writeFileSync(path.join(outDir, 'gainer-body.md'), GN.gainerBody(gstate, { nowMs, warnings: gw, note: gnote }, t => T.render(t, 'md')));
