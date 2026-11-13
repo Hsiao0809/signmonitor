@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { TOPICS } from './telegram-topics.mjs';
+import { fmtP } from './tracker.mjs';
 
 const H = 3600e3;
 export const EARLY = ['quiet', 'hourly', 'pre', 'dormant', 'rate'];
@@ -108,7 +109,9 @@ function resonanceOf(st, newSigs, nowMs, cfg) {
     if (!early.length || !conf.length) continue;
     const last = st.resonance[base];
     if (last && nowMs - last < cfg.resonanceCoolHours * H) continue;
-    out.push({ base, early, conf });
+    /* 共振通知的價格：優先用這一輪（現在）的訊號價格，沒有就用最近一次有價格的訊號 */
+    const withPx = list.filter(s => s.px > 0).sort((a, b) => b.t - a.t);
+    out.push({ base, early, conf, px: withPx.length ? withPx[0].px : null });
     st.resonance[base] = nowMs;
   }
   return out;
@@ -119,7 +122,7 @@ function resonanceText(events, nowMs, hours) {
   const p = tpeParts(nowMs);
   const L = [`【共振】${p.md} ${p.hhmm} 台灣時間（${events.length} 檔：早期訊號＋金叉 ${hours} 小時內同時出現）`];
   const part = list => [...new Map(list.map(s => [s.k, s])).values()].map(s => `${labelOf(s.k)} ${tpeParts(s.t).md} ${tpeParts(s.t).hhmm}`).join('、');
-  for (const e of events) L.push(`${e.base}｜早期：${part(e.early)}｜確認：${part(e.conf)}`);
+  for (const e of events) L.push(`${e.base}｜價 ${e.px ? fmtP(e.px) : '—'}｜早期：${part(e.early)}｜確認：${part(e.conf)}`);
   L.push('原本的訊號通知照常發送；這則只是把同一檔的早期訊號與金叉串起來');
   return L.join('\n');
 }
@@ -137,12 +140,12 @@ function digestMessages(st, nowMs, cfg) {
 }
 
 /**
- * msgs：[{ k, text }]（依發出順序）；sigs：[{ k, base }]（這一輪每個訊號的類型與標的）
+ * msgs：[{ k, text }]（依發出順序）；sigs：[{ k, base, px? }]（這一輪每個訊號的類型、標的與當時價格）
  * 回傳 { out, info }：out＝要發的訊息（legacy 時就是原本那個陣列）；st 會被更新（呼叫端負責存檔）
  */
 export function plan(msgs, sigs, nowMs, st, cfg = DEFAULTS) {
   const p = tpeParts(nowMs);
-  const newSigs = sigs.filter(s => s.k && s.base).map(s => ({ k: s.k, base: normBase(s.base), t: nowMs }));
+  const newSigs = sigs.filter(s => s.k && s.base).map(s => ({ k: s.k, base: normBase(s.base), t: nowMs, px: s.px > 0 ? s.px : null }));
   const seen = new Set(st.signals.map(s => `${s.k}|${s.base}|${s.t}`));
   for (const s of newSigs) if (!seen.has(`${s.k}|${s.base}|${s.t}`)) st.signals.push(s);
   st.signals = st.signals.filter(s => nowMs - s.t < cfg.keepHours * H);

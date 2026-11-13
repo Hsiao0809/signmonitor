@@ -12,6 +12,7 @@ import * as DM from '../src/dormant.mjs';
 import * as RT from '../src/rate.mjs';
 import * as G from '../src/gainer.mjs';
 import * as C from '../src/cross.mjs';
+import { fmtP } from '../src/tracker.mjs';
 
 const H = 3600e3;
 /* 台灣時間 → UTC 毫秒 */
@@ -235,4 +236,17 @@ test('文字：多檔各標各的次數', () => {
   const t = G.gainerAlertText(gain, T, '', undefined, b => (b === 'AAA' ? 1 : 4));
   assert.match(t, /AAA.*｜今日第 1 次/);
   assert.match(t, /BBB.*｜今日第 4 次/);
+});
+
+test('共振：每檔帶價格，優先用這一輪訊號的價格，沒有就用最近一次有價格的；都沒有顯示 —', () => {
+  const st = TR.emptyState(), c = cfgOf({});
+  TR.plan([], [{ k: 'hourly', base: 'AAA', px: 1.5 }], tw('2026-11-12 08:00'), st, c);
+  const a = TR.plan([{ k: 'cross', text: 'C' }], [{ k: 'cross', base: 'AAA', px: 1.8 }], tw('2026-11-12 10:00'), st, c);
+  assert.match(a.out.find(m => m.k === 'resonance').text, new RegExp(`AAA｜價 ${fmtP(1.8)}｜`));
+  TR.plan([], [{ k: 'dormant', base: 'BBB', px: 0.25 }], tw('2026-11-12 08:00'), st, c);
+  const b = TR.plan([{ k: 'cross', text: 'C' }], [{ k: 'cross', base: 'BBB' }], tw('2026-11-12 11:00'), st, c);
+  assert.match(b.out.find(m => m.k === 'resonance').text, new RegExp(`BBB｜價 ${fmtP(0.25)}｜`));
+  TR.plan([], [{ k: 'quiet', base: 'CCC' }], tw('2026-11-12 08:00'), st, c);
+  const d = TR.plan([{ k: 'cross', text: 'C' }], [{ k: 'cross', base: 'CCC' }], tw('2026-11-12 12:00'), st, c);
+  assert.match(d.out.find(m => m.k === 'resonance').text, /CCC｜價 —｜/);
 });

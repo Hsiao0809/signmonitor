@@ -54,6 +54,9 @@ test('文字與 Issue 本文（狀態可還原）', () => {
   assert.match(txt, /年化 120%/);
   assert.match(txt, /24h -5\.2%/);
   assert.equal(R.rateAlertText([], T), '');
+  /* 沒有價格（現貨、永續都沒有）也要有價格欄，顯示 — */
+  const ev2 = R.pickSpikes(R.emptyRate(), [{ ccy: 'NOPX', pre: 0.25, est: 1.2 }], { NOPX: flat(0.2) }, T, {});
+  assert.match(R.rateAlertText(ev2, T), /價格 —/);
   const body = R.rateBody(st, { nowMs: T });
   assert.deepEqual(R.extractRate(body), JSON.parse(JSON.stringify(st)));
   assert.deepEqual(R.extractRate(''), R.emptyRate());

@@ -231,6 +231,9 @@ export function advance(item, bars4h, nowMs, cfg = CONFIG) {
   if (it.status === 'pending' && nowMs >= it.dayT + D + cfg.expiryDays * D) {
     it = { ...it, status: 'expired' };
   }
+  /* 通知當下的現價＝最近一根已收盤 4H K 的收盤價 */
+  const px = closedBars.length ? closedBars[closedBars.length - 1].c : null;
+  for (const e of events) e.px = px;
   return { item: it, events };
 }
 
@@ -303,8 +306,8 @@ export function triggerText(p, cfg = CONFIG) {
 export function eventText(e, cfg = CONFIG) {
   const p = e.item;
   if (e.type === 'trigger') return triggerText(p, cfg);
-  if (e.type === 't1') return `【T1】${tvItem(p)} ${SIDE[p.side]} 已達 T1 ${fmtP(p.t1)}（+${cfg.t1R}R），停損 ${fmtP(p.stop)} 不變`;
-  return `【結算】${tvItem(p)} ${SIDE[p.side]}：${OUT[p.outcome]} ${fmtP(p.exit)}，${p.r >= 0 ? '+' : ''}${p.r.toFixed(2)}R（進場 ${fmtP(p.entry)}）`;
+  if (e.type === 't1') return `【T1】${tvItem(p)} ${SIDE[p.side]} 已達 T1 ${fmtP(p.t1)}（+${cfg.t1R}R），停損 ${fmtP(p.stop)} 不變｜現價 ${e.px ? fmtP(e.px) : '—'}`;
+  return `【結算】${tvItem(p)} ${SIDE[p.side]}：${OUT[p.outcome]} ${fmtP(p.exit)}，${p.r >= 0 ? '+' : ''}${p.r.toFixed(2)}R（進場 ${fmtP(p.entry)}）｜現價 ${e.px ? fmtP(e.px) : '—'}`;
 }
 
 function statLine(s) {

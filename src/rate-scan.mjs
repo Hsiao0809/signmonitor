@@ -45,7 +45,7 @@ export async function history(ccy, pages = SCAN.pages) {
   return out;
 }
 
-/** OKX 現貨 USDT 對的現價與 24h 漲跌：{ccy: { last, chg }} */
+/** OKX 現貨 USDT 對的現價與 24h 漲跌（現貨沒有的用永續價補）：{ccy: { last, chg }} */
 export async function spot() {
   const j = await V.getJSON('https://www.okx.com/api/v5/market/tickers?instType=SPOT');
   const px = {};
@@ -54,6 +54,17 @@ export async function spot() {
     const last = num(t.last), open = num(t.open24h);
     if (last) px[t.instId.slice(0, -5)] = { last, chg: open ? +(last / open - 1).toFixed(4) : null };
   }
+  /* 沒有現貨 USDT 對的幣，改用永續合約價，通知才不會沒有價格；永續也失敗不影響現貨結果 */
+  try {
+    const sj = await V.getJSON('https://www.okx.com/api/v5/market/tickers?instType=SWAP');
+    for (const t of sj?.data || []) {
+      if (!t.instId.endsWith('-USDT-SWAP')) continue;
+      const ccy = t.instId.slice(0, -10);
+      if (px[ccy]) continue;
+      const last = num(t.last), open = num(t.open24h);
+      if (last) px[ccy] = { last, chg: open ? +(last / open - 1).toFixed(4) : null };
+    }
+  } catch { /* 沒有永續價就維持原樣 */ }
   return px;
 }
 

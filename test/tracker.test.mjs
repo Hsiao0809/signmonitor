@@ -55,6 +55,10 @@ test('觸發後碰 T2 結算 +3R', () => {
   assert.equal(item.r, 3);
   assert.equal(events[0].type, 'trigger');
   assert.equal(events.at(-1).type, 'close');
+  /* T1／結算通知帶現價（最近一根已收盤 4H K 的收盤價） */
+  const last = bs.at(-1).c;
+  assert.equal(events.at(-1).px, last);
+  assert.match(T.eventText(events.at(-1)), new RegExp(`現價 ${String(T.fmtP(last)).replace('.', '\\.')}`));
 });
 
 test('同一根 K 同時碰停損與目標時算停損', () => {
