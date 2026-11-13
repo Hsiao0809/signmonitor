@@ -132,3 +132,14 @@ test('K 線來源：先用訊號那家，沒有就換同名合約；金叉用 Bi
   assert.equal(SC.pickSrc({ k: 'hourly', b: 'ZZZ', v: ['bybit'] }, okx, bg), null);
   assert.deepEqual(SC.pickSrc({ k: 'cross', b: 'NIGHT' }, okx, bg), ['binance', 'NIGHTUSDT']);
 });
+
+test('爆發標記成績：候選／可略過分組、爆發率', () => {
+  const now = Date.UTC(2026, 10, 15);
+  const mk = (tg, up, i) => ({ k: 'hourly', c: '加密', b: 'X' + i, t: Date.UTC(2026, 10, 13, 12) + i * 3600e3, tg, e: 1, m: { 24: [0, up, -0.1, 0] } });
+  const recs = [mk(['爆發候選'], 0.4, 1), mk(['爆發候選'], 0.1, 2), mk(['可略過'], 0.05, 3), mk([], 0.35, 4)];
+  const w = SC.summarize(recs, now).win.all;
+  const by = Object.fromEntries(w.marks.map(x => [x.m, x.h[24]]));
+  assert.equal(by.cand.n, 2); assert.equal(by.cand.b30, 50);
+  assert.equal(by.skip.b30, 0); assert.equal(by.mid.n, 1);
+  assert.match(SC.renderMd(SC.summarize(recs, now)), /爆發標記/);
+});

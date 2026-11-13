@@ -533,6 +533,9 @@ function bn(sym){return 'https://www.tradingview.com/chart/?symbol='+encodeURICo
 function stk(x){return CT(x.stock?'stock':'crypto')}
 function normBase(b,stock){b=String(b||'').toUpperCase();return stock&&/B$/.test(b)?b.slice(0,-1):b}
 function hW(a){return a.watch||inWatch(a.base)}
+/* 爆發標記（src/burst.mjs）：候選＝回測約 3 成之後 24h 曾漲 ≥30%；可略過＝回測約 1% */
+function BT(a){var t='這根振幅 '+(a.bfr==null?'—':a.bfr+'%')+'｜7 天漲 '+(a.bf7==null?'—':a.bf7+'%')+'｜7 天高低差 '+(a.bfg==null?'—':a.bfg+'%');
+  return a.burst==='cand'?'<span class="badge bl" title="爆發候選：爆量 ≥20x、這根振幅 ≥13%、7 天已漲 ≥50%；回測約 3 成之後 24h 內漲 ≥30%，多數會先跌 8% 以上｜'+t+'">爆發候選</span>':a.burst==='skip'?'<span class="cat" title="可略過：前 7 天高低差 <28% 或這根振幅 <4%；回測約 1% 爆發｜'+t+'">可略過</span>':''}
 /* 盤中爆量的附加標記：連續放量、時段性、盤中推算已通知、幾小時前預警 */
 function RT(a){return (a.ramp?'<span class="badge" title="連續 4 根逐根放大，3 根累積 '+a.cx+'x 近48h">連續放量</span>':'')+(a.season?'<span class="cat" title="這幾個小時平常每天也會放量">時段性</span>':'')+
   (a.earlyMin?'<span class="cat" title="第 '+a.earlyMin+' 分盤中推算已通知">推算:'+a.earlyMin+'</span>':'')+(a.preH?'<span class="cat" title="'+a.preH+' 小時前已預警">預警 '+a.preH+'h前</span>':'')}
@@ -545,7 +548,7 @@ function nearOf(c){var px=LP(c.ex,c.id),sd=F.short.side;if(px==null)return null;
   if(px>c.hi||px<c.lo)return 0;return Math.min((c.hi/px-1)*100,(1-c.lo/px)*100)}
 var COLS={
   hourly:function(){return [
-    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+QT(a)+RT(a)+(hW(a)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(a.base))+'</div>'}},
+    {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+BT(a)+QT(a)+RT(a)+(hW(a)?'<span class="star" title="已在自選" aria-label="已在自選">★</span>':WA(a.base))+'</div>'}},
     {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
     {k:'x1',l:'同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
     {k:'x2',l:'近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
@@ -627,7 +630,7 @@ var COLS={
 COLS.wh=COLS.hourly;
 /* 盤中推算（第 15／30／45 分）與預警（整點，還沒到正式爆量） */
 COLS.early=function(){return [
-  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.moved?'<span class="cat" title="這根之前 24h '+(a.chg24>=0?'+':'')+a.chg24+'%，日 ATR '+a.atrp+'%；不推播">'+(a.moved==='up'?'已漲過':'已跌過')+'</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
+  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+BT(a)+(a.moved?'<span class="cat" title="這根之前 24h '+(a.chg24>=0?'+':'')+a.chg24+'%，日 ATR '+a.atrp+'%；不推播">'+(a.moved==='up'?'已漲過':'已跌過')+'</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
   {k:'t',l:'時間',s:function(a){return a.t+a.min*60e3},v:function(a){return tpe(a.t)+' <span class="cat">第'+a.min+'分</span>'}},
   {k:'x1',l:'推算同時段',n:1,s:function(a){return a.x1},v:function(a){return '<b>'+a.x1+'x</b>'}},
   {k:'x2',l:'推算近48h',n:1,s:function(a){return a.x2},v:function(a){return a.x2+'x'}},
@@ -696,7 +699,7 @@ COLS.gevt=function(){return [
   {k:'px',l:'現價',n:1,v:function(e){return e.sv?FP(e.sv,gPx(e)):'—'}},
   {k:'aft',l:'之後（做空）',h:'通知價到現價：正的＝跌了（做空賺）',n:1,s:function(e){var p=gPx(e);return p&&e.price?1-p/e.price:null},v:function(e){var p=gPx(e);return p&&e.price?pc(1-p/e.price):'—'}}]};
 COLS.pre=function(){return [
-  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+(a.closed?'<span class="cat">週末休市</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
+  {k:'base',l:'代號',dd:1,s:function(a){return a.base},v:function(a){return '<div class="c0w">'+link(a.base,tv(a.venue,a.sym,'60'))+CT(a.cat)+BT(a)+(a.closed?'<span class="cat">週末休市</span>':'')+(hW(a)?'<span class="star" title="已在自選">★</span>':WA(a.base))+'</div>'}},
   {k:'t',l:'時間',s:function(a){return a.t},v:function(a){return tpe(a.t)}},
   {k:'c',l:'條件',s:function(a){return a.c},v:function(a){return PREC[a.c]||a.c}},
   {k:'xp',l:'比前一根',n:1,s:function(a){return a.xp},v:function(a){return a.xp==null?'—':'<b>'+a.xp+'x</b>'}},
@@ -1039,7 +1042,16 @@ function score(){
     {l:'24h',n:1,v:function(r){return pc(r.r24)}},
     {l:'72h',n:1,v:function(r){return pc(r.r72)}},
     {l:'24h 最高／最低',ml:'24h 高／低',n:1,v:function(r){return r.up24==null?'—':pc(r.up24)+'／'+pc(r.dn24)}}];
+  var mk=(W.marks||[]).filter(function(x){return x.h[h]&&x.h[h].n});
+  var mc=[{l:'標記',v:function(x){return '<b>'+esc(x.label)+'</b>'}},
+    {l:'筆數',n:1,v:function(x){return scN(x.h[h])}},
+    {l:'爆發率',n:1,h:'期間曾漲 ≥30% 的比例',v:function(x){var st=x.h[h];return st.n>=30?st.b30.toFixed(0)+'%':'<span class="cat">'+st.b30.toFixed(0)+'%</span>'}},
+    {l:'平均',n:1,v:function(x){return scV(x.h[h],x.h[h].avg)}},
+    {l:'勝率',n:1,v:function(x){return scW(x.h[h])}},
+    {l:'期間最大有利',ml:'最大有利',n:1,m:1,v:function(x){return scV(x.h[h],x.h[h].up)}},
+    {l:'期間最大不利',ml:'最大不利',n:1,v:function(x){return scV(x.h[h],x.h[h].dn)}}];
   return ctl+'<div class="vs">'+meta+
+    panel('爆發標記 <small>加密的盤中爆量／推算／預警，11-13 起；回測時候選約 3 成、可略過約 1%、一般約 1 成多</small>',table('scm',mk,mc,'還沒有結果（標記上線後 '+h+' 小時才有）'),'fix')+
     panel('各訊號成績 <small>'+({'7':'近 7 天','30':'近 30 天',all:'全部'})[SC.w]+'，持有 '+h+' 小時</small>',table('sck',kr,kc,'這段期間還沒有結果'),'fix')+
     panel('盤中爆量細分 <small>有這個條件 vs 沒有；超額為負＝比大盤差</small>',table('scf',fr,fc,'這段期間還沒有結果'),'fix')+
     panel('最近結果 <small>做多報酬，最近 120 筆</small>',table('scr',X.recent,rc,'還沒有結果'),'grow mh')+'</div>'}

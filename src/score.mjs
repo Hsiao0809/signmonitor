@@ -244,6 +244,7 @@ export function stat(recs, h) {
     avg: r2(mean(ret)), med: r2(median(ret)),
     win: Math.round(ret.filter(v => v - COST > 0).length / rows.length * 1000) / 10,
     ex: r2(mean(ex)), nx: ex.length, up: r2(mean(fav)), dn: r2(mean(adv)),
+    b30: Math.round(rows.filter(r => (d(r) > 0 ? r.m[h][1] : -r.m[h][2]) >= 0.3).length / rows.length * 1000) / 10,   /* 爆發率：期間曾漲 ≥30% */
     fd: fd.length ? r2(mean(fd)) : null,
     fdw: fd.length ? Math.round(fd.filter(v => v > 0).length / fd.length * 1000) / 10 : null
   };
@@ -273,6 +274,13 @@ export const FEATS = [
   ['watch', '自選', r => (r.tg || []).includes('自選')]
 ];
 
+const tg = (r, t) => (r.tg || []).includes(t);
+export const MARKS = [
+  ['cand', '【爆發候選】', r => tg(r, '爆發候選')],
+  ['mid', '沒有標記', r => r.t >= Date.UTC(2026, 10, 13, 11) && !tg(r, '爆發候選') && !tg(r, '可略過')],
+  ['skip', '【可略過】', r => tg(r, '可略過')]
+];
+
 export function summarize(recs, now) {
   const W = { '7': 7, '30': 30, all: Infinity };
   const win = {};
@@ -294,7 +302,13 @@ export function summarize(recs, now) {
         feats.push({ c, f, label, yes: Object.fromEntries(HZ.map(h => [h, stat(y, h)])), no: Object.fromEntries(HZ.map(h => [h, stat(n, h)])), cons: Object.fromEntries(HZ.map(h => [h, consistency(y, h)])) });
       }
     }
-    win[key] = { n: rs.length, kinds, feats };
+    /* 爆發標記（src/burst.mjs，2026-11-13 起才有）：加密的盤中爆量／推算／預警 */
+    const cr = rs.filter(r => r.c === '加密' && (r.k === 'hourly' || r.k === 'est' || r.k === 'pre'));
+    const marks = MARKS.map(([m, label, fn]) => {
+      const g = cr.filter(fn);
+      return { m, label, h: Object.fromEntries(HZ.map(h => [h, stat(g, h)])) };
+    }).filter(x => HZ.some(h => x.h[h].n));
+    win[key] = { n: rs.length, kinds, feats, marks };
   }
   const recent = recs.filter(r => r.m && r.m[4]).sort((a, b) => b.t - a.t).slice(0, 120).map(r => ({
     k: r.k, b: r.b, c: r.c, t: r.t, v: (r.v || [])[0] || null, x: r.x ?? r.xs ?? null, ch: r.ch ?? null, tg: (r.tg || []).filter(x => x !== '自選').slice(0, 3), w: (r.tg || []).includes('自選') ? 1 : 0,
@@ -320,6 +334,11 @@ export function renderMd(sum) {
     L.push(`| ${KINDS[r.k].l} | ${r.c} | ${s.n} | ${s.nh} | ${pct(s.avg)} | ${pct(s.med)} | ${s.win}% | ${pct(s.ex)} | ${pct(s.fd)} | ${r.cons[24] === 1 ? '都正' : r.cons[24] === -1 ? '都負' : r.cons[24] === 0 ? '不一致' : '樣本不足'} |`);
   }
   L.push('', '反向做空＝訊號價放空、10% 停損、到期平倉、扣成本的平均報酬。', '');
+  if (w.marks && w.marks.length) {
+    L.push('## 爆發標記（加密，持有 24 小時；2026-11-13 起）', '', '| 標記 | 筆數 | 爆發率（曾漲≥30%） | 平均 | 勝率 | 期間最大不利 |', '|---|---:|---:|---:|---:|---:|');
+    for (const x of w.marks) { const t = x.h[24]; if (t.n) L.push(`| ${x.label} | ${t.n} | ${t.b30}% | ${pct(t.avg)} | ${t.win}% | ${pct(t.dn)} |`); }
+    L.push('');
+  }
   L.push('## 盤中爆量細分（全部期間，24 小時：有這個條件／沒有）', '', '| 類別 | 條件 | 有：筆數 | 有：超額 | 有：反向做空 | 沒有：筆數 | 沒有：超額 |', '|---|---|---:|---:|---:|---:|---:|');
   for (const f of w.feats) L.push(`| ${f.c} | ${f.label} | ${f.yes[24].n || 0} | ${pct(f.yes[24].ex)} | ${pct(f.yes[24].fd)} | ${f.no[24].n || 0} | ${pct(f.no[24].ex)} |`);
   L.push('', '> 只統計已發生的走勢，不是投資建議；一兩週的資料很容易只是那段行情的特性。');
