@@ -351,7 +351,8 @@ main{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-ove
   /* 保險：區塊總高真的超過畫面時，整欄捲動而不是疊在一起 */
   .vs{overflow-y:auto;overscroll-behavior:contain}
   .pnl>h2{flex:none}
-  .pnl-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+  /* 不用 contain：滑鼠在沒有內容可捲的小區塊上，滾輪要能傳給外層整欄捲動；區塊自己捲到底也會接著捲外層 */
+  .pnl-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:auto}
   .meta{flex:none}}
 /* 篩選列：固定在內容區頂端 */
 .fb{position:sticky;top:0;z-index:4;background:var(--bg);display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--line)}
