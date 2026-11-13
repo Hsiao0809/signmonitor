@@ -345,6 +345,8 @@ main{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-ove
   .pnl{display:flex;flex-direction:column;min-height:0;flex:0 1 auto}
   .pnl.grow{flex:1 1 auto}.pnl.fix{flex:none}
   /* keep：不被旁邊的長區塊壓縮；超過上限才在自己區塊內捲動（金叉 A 級最多約 30% 畫面、成績最多約 20%） */
+  /* 總覽左欄：多模組重疊不被上下的區塊擠成 0 高；高度不夠時整欄捲動 */
+  .pnl.ovp{flex:none}
   .pnl.keep{flex:none}.pnl.keep>.pnl-b{max-height:min(300px,30vh)}.pnl.keep.k3>.pnl-b{max-height:20vh}.pnl.grow.mh{min-height:160px}
   /* 保險：區塊總高真的超過畫面時，整欄捲動而不是疊在一起 */
   .vs{overflow-y:auto;overscroll-behavior:contain}
@@ -423,7 +425,7 @@ a{color:var(--acc)}
 .home,.wg{display:grid;gap:0 20px}
 .home>.vs>.pnl:first-child>h2,.wg>.vs>.pnl:first-child>h2{margin-top:10px}
 /* 多模組重疊：只顯示約 5 檔的高度，其餘在區塊內捲動（電腦、手機都一樣） */
-.ovp>.pnl-b{max-height:290px;overflow-y:auto;overscroll-behavior:contain}
+.ovp>.pnl-b{max-height:290px;overflow-y:auto;overscroll-behavior:auto}
 /* ＋（加入自選）與「自選」標籤同寬，代號才對得齊；底部提示列 */
 .wa{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;margin:0;flex:none;box-sizing:border-box;font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;border-radius:3px;border:1px solid var(--line);background:transparent;color:var(--mut);cursor:pointer}
 .wa:hover{color:var(--acc);border-color:var(--acc)}.wa:disabled{cursor:wait;opacity:.7}
