@@ -437,7 +437,7 @@ a{color:var(--acc)}
 .it{padding:8px 10px}
 </style></head><body>
 <header><div class="hd"><h1>signmonitor</h1>
-<nav id="tabs"><button data-t="home">總覽</button><button data-t="hourly">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="cross">金叉</button><button data-t="rate">借幣利率</button><button data-t="gainer">做空候選</button><button data-t="watch">自選</button></nav>
+<nav id="tabs"><button data-t="home">總覽</button><button data-t="hourly">盤中爆量</button><button data-t="short">短線</button><button data-t="layout">布局</button><button data-t="cross">金叉</button><button data-t="gainer">做空候選</button><button data-t="rate">借幣利率</button><button data-t="watch">自選</button></nav>
 <span class="upd" id="upd"></span><button class="btn" id="reload">重新整理</button></div></header>
 <main id="main"><div class="empty">讀取中…</div></main>
 <script>
