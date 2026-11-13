@@ -874,16 +874,16 @@ function todoTables(){var G=todoGroups();if(!G.length)return '<div class="empty"
   return G.map(function(g){return '<h3 class="gh">'+g.title+' <small>'+g.rows.length+(g.note?'　'+g.note:'')+'</small></h3>'+table(g.id,g.rows,g.cols)}).join('')}
 var MODS=[['hourly','盤中爆量'],['pend','短線等待'],['open','短線持倉'],['layout','布局'],['crossA','金叉 A'],['crossB','金叉 B'],['crossDA','日線金叉 A'],['crossDB','日線金叉 B']];
 function overlap(){
-  var m={};function add(b,k,txt){if(!b)return;m[b]=m[b]||{};if(!m[b][k])m[b][k]=txt}
-  if(D.hourly)D.hourly.recent.forEach(function(a){add(normBase(a.base),'hourly',a.x1+'x '+tpe(a.t)+' @'+fp(a.price))});
-  if(D.short){D.short.pending.forEach(function(c){add(normBase(c.base),'pend',c.vx+'x @'+fp(c.close))});
-    D.short.open.forEach(function(p){var r=rNow(p,LP(p.ex,p.id));add(normBase(p.base),'open',SIDE[p.side]+(r==null?'':' '+(r>=0?'+':'')+r.toFixed(1)+'R')+' @'+fp(p.entry))})}
-  if(D.layout)D.layout.active.forEach(function(it){var px=lpLayout(it);add(normBase(it.base),'layout',(px?((px/it.entry-1)*100).toFixed(1)+'%':'日收 '+((it.ret||0)*100).toFixed(1)+'%')+' @'+fp(it.entry))});
-  if(D.cross){D.cross.active.forEach(function(it){add(normBase(it.base,it.stock),'crossA',(it.deadT?'已死叉':'仍成立')+' @'+fp(it.close))});
-    D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t)+' @'+fp(it.close))})}
-  if(D.crossD){D.crossD.active.forEach(function(it){add(normBase(it.base,it.stock),'crossDA',(it.deadT?'已死叉':'仍成立')+' @'+fp(it.close))});
-    D.crossD.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossDB',tpe(it.t)+' @'+fp(it.close))})}
-  return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b]}}).filter(function(x){return x.n>=2})
+  var m={},U={};function add(b,k,txt,url){if(!b)return;m[b]=m[b]||{};if(!m[b][k])m[b][k]=txt;if(url&&!U[b])U[b]=url}
+  if(D.hourly)D.hourly.recent.forEach(function(a){add(normBase(a.base),'hourly',a.x1+'x '+tpe(a.t)+' @'+fp(a.price),tv(a.venue,a.sym,'60'))});
+  if(D.short){D.short.pending.forEach(function(c){add(normBase(c.base),'pend',c.vx+'x @'+fp(c.close),tv(c.ex,c.id,'240'))});
+    D.short.open.forEach(function(p){var r=rNow(p,LP(p.ex,p.id));add(normBase(p.base),'open',SIDE[p.side]+(r==null?'':' '+(r>=0?'+':'')+r.toFixed(1)+'R')+' @'+fp(p.entry),tv(p.ex,p.id,'240'))})}
+  if(D.layout)D.layout.active.forEach(function(it){var px=lpLayout(it);add(normBase(it.base),'layout',(px?((px/it.entry-1)*100).toFixed(1)+'%':'日收 '+((it.ret||0)*100).toFixed(1)+'%')+' @'+fp(it.entry),layoutUrl(it))});
+  if(D.cross){D.cross.active.forEach(function(it){add(normBase(it.base,it.stock),'crossA',(it.deadT?'已死叉':'仍成立')+' @'+fp(it.close),bn(it.sym))});
+    D.cross.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossB',tpe(it.t)+' @'+fp(it.close),bn(it.sym))})}
+  if(D.crossD){D.crossD.active.forEach(function(it){add(normBase(it.base,it.stock),'crossDA',(it.deadT?'已死叉':'仍成立')+' @'+fp(it.close),bn(it.sym))});
+    D.crossD.recentB.forEach(function(it){add(normBase(it.base,it.stock),'crossDB',tpe(it.t)+' @'+fp(it.close),bn(it.sym))})}
+  return Object.keys(m).map(function(b){return {b:b,n:Object.keys(m[b]).length,m:m[b],u:U[b]||null}}).filter(function(x){return x.n>=2})
     .sort(function(a,b){return (b.n-a.n)||(inWatch(b.b)-inWatch(a.b))||a.b.localeCompare(b.b)})}
 var MODEXP={'盤中爆量':3,'盤中預警':3,'沉睡甦醒':3,'借幣利率':3,'做空候選':3,'短線清單':3,'布局清單':30,'金叉清單':6,'金叉清單（日線）':30,'掃流動性':6};
 function status(){
@@ -921,7 +921,7 @@ function home(){
   var t=todo(),o=overlap();
   var left=panel('需要處理 <small>'+t.length+'</small>',todoTables(),'grow');
   var ov=o.length?'<div class="card">'+o.map(function(x){
-    return '<div class="ov"><div class="l1"><span class="sym">'+esc(x.b)+'</span><span class="cat">'+x.n+' 個模組</span>'+WT(x.b)+'</div><div class="chips">'+
+    return '<div class="ov"><div class="l1">'+link(x.b,x.u)+'<span class="cat">'+x.n+' 個模組</span>'+WT(x.b)+'</div><div class="chips">'+
       MODS.filter(function(k){return x.m[k[0]]}).map(function(k){return '<span class="badge">'+k[1]+' '+esc(x.m[k[0]])+'</span>'}).join('')+'</div></div>'}).join('')+'</div>':'<div class="card empty">無</div>';
   var right=panel('大盤',marketCard(),'fix')+panel('量增價平成績',quietCard(),'fix')+panel('多模組重疊 <small>'+o.length+' 檔同時出現在 2 個以上模組</small>',ov,'ovp')+panel('系統狀態',status(),'fix');
   return (sysBad()?'<div class="card alert" style="flex:none">系統有異常（更新延遲、執行失敗或資料警告），詳見「系統狀態」</div>':'')+'<div class="home"><div class="vs">'+right+'</div><div class="vs todo">'+left+'</div></div>'}
