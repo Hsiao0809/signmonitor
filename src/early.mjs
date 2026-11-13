@@ -12,6 +12,7 @@ import {
   HOURLY, isAnomaly, isRamp, preKind, crossVenue, groupByBase, weekendClosed, hourStats, order,
   money, hhmm, alink, kind, othersLine, VL, CAT
 } from './hourly.mjs';
+import { burstTag, burstRank, burstLabel, bfOut, BURST_NOTE } from './burst.mjs';
 
 const H = 3600e3;
 export const EARLY = {
@@ -62,7 +63,7 @@ export function preContext(pstate, T, cfg = EARLY) {
 }
 
 const preScore = p => Math.max(p.xp ?? 0, p.x1);
-const preOrder = (a, b) => (b.watch - a.watch) || (a.closed - b.closed) || preScore(b) - preScore(a);
+const preOrder = (a, b) => (burstRank(a) - burstRank(b)) || (b.watch - a.watch) || (a.closed - b.closed) || preScore(b) - preScore(a);
 
 /**
  * 整點收盤後：還沒到正式爆量／連續放量的標的，達預警門檻就列入
@@ -79,11 +80,13 @@ export function pickPre(pstate, entries, T, cfg = HOURLY, ecfg = EARLY) {
     const s = Math.max(e.stats.xp ?? 0, e.stats.x1);
     const pl = pstate.preLast[key];
     if (pl && T - pl.t < ecfg.preDedupHours * H && s < pl.s * ecfg.preReMult) continue;
+    const burst = burstTag({ cat: e.cat, watch: w, x1: e.stats.x1, bf: e.stats.bf });
     added.push({
       t: T, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat, c,
       xp: e.stats.xp == null ? null : +e.stats.xp.toFixed(1), x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1),
       qv: Math.round(e.stats.qv), chg: +(e.stats.chg * 100).toFixed(2), price: e.stats.price,
-      watch: w, closed: weekendClosed(T, e.cat)
+      watch: w, closed: weekendClosed(T, e.cat),
+      ...(burst ? { burst } : {}), ...(e.cat === 'crypto' ? bfOut(e.stats.bf) : {})
     });
     pstate.preLast[key] = { t: T, s };
   }
@@ -111,12 +114,14 @@ export function pickEarly(pstate, hstate, entries, T, minute, cfg = HOURLY, ecfg
     /* 同一小時已列過：量沒翻倍就不重複；之前是「已漲過／跌過」、現在回到剛開始動的照常推播 */
     if (el && el.t === T && e.stats.x1 < el.x1 * cfg.reAlertMult && (!el.moved || moved)) continue;
     const mv = e.stats.move;
+    const burst = burstTag({ cat: e.cat, watch: !!e.watch, x1: e.stats.x1, bf: e.stats.bf }, { partial: true });
     alerts.push({
       t: T, min: minute, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat,
       x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1), qv: Math.round(e.stats.qv), qvNow: Math.round(e.stats.qvNow ?? 0),
       chg: +(e.stats.chg * 100).toFixed(2), price: e.stats.price, watch: !!e.watch, closed: weekendClosed(T, e.cat),
       ...(mv ? { chg24: +mv.chg24.toFixed(1), atrp: +mv.atrp.toFixed(1) } : {}),
       ...(moved ? { moved } : {}),
+      ...(burst ? { burst } : {}), ...(e.cat === 'crypto' ? bfOut(e.stats.bf) : {}),
       ...crossVenue(e, byBase, cfg)
     });
     const pushedBefore = el && el.t === T && !el.moved;
@@ -176,8 +181,10 @@ export function preAlertText(added, T, url = '', ecfg = EARLY, nth = null) {
   if (!added.length) return '';
   const L = [`【預警】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${added.length} 檔，比前一根 ≥2x 或同時段 ≥2x，還沒到正式爆量）`];
   added.slice(0, ecfg.preMaxLines).forEach(p => L.push(
-    `${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}｜價 ${p.price ? fmtP(p.price) : '—'}${nth ? `｜今日第 ${nth(p.base)} 次` : ''}`));
+    `${burstLabel(p)}${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}｜價 ${p.price ? fmtP(p.price) : '—'}${nth ? `｜今日第 ${nth(p.base)} 次` : ''}`));
   if (added.length > ecfg.preMaxLines) L.push(`另有 ${added.length - ecfg.preMaxLines} 檔，見網頁「盤中爆量」分頁`);
+  if (added.some(p => p.burst === 'cand')) L.push(BURST_NOTE.cand);
+  if (added.slice(0, ecfg.preMaxLines).some(p => p.burst === 'skip')) L.push(BURST_NOTE.skip);
   L.push('約 3 成正式爆量在前 1 小時會先出現預警；沒升級的多半是雜訊');
   if (url) L.push(url);
   return L.join('\n');
@@ -190,12 +197,14 @@ export function earlyAlertText(all, T, minute, url = '', ecfg = EARLY) {
   if (!alerts.length) return '';
   const L = [`【盤中推算】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間，第 ${minute} 分（${alerts.length} 檔；依已成交量推算整根）`];
   alerts.forEach(a => {
-    L.push(`${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★推算 ${a.x1}x 同時段／${a.x2}x 近48h`);
+    L.push(`${burstLabel(a)}${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★推算 ${a.x1}x 同時段／${a.x2}x 近48h`);
     L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（這根目前 ${pcs(a.chg)}${a.chg24 != null ? `，前24h ${pcs(a.chg24)}／日ATR ${a.atrp}%` : ''}）｜已成交 ${money(a.qvNow)}，推算整根 ${money(a.qv)}`);
     L.push(`  ${othersLine(a)}`);
   });
   const p = ecfg.precision[minute];
   if (p) L.push(`第 ${minute} 分推算達標的，實測約 ${p}% 收盤後真的成為正式爆量（只有 OKX、Bitget）`);
+  if (alerts.some(a => a.burst === 'cand')) L.push(BURST_NOTE.cand);
+  if (alerts.some(a => a.burst === 'skip')) L.push(BURST_NOTE.skip.replace('前 7 天高低差 <28% 或這根振幅 <4%', '前 7 天高低差 <28%'));
   if (skipped) L.push(`另有 ${skipped} 檔這根之前 24h 已漲過或跌過（≥ ${ecfg.moveAtr} 倍日 ATR），不推播，只列在網頁`);
   if (url) L.push(url);
   return L.join('\n');

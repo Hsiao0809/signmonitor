@@ -12,6 +12,7 @@
 import { avgRangePct, quietHour } from './quiet.mjs';
 import zlib from 'node:zlib';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
+import { burstFeat, burstTag, burstRank, burstLabel, bfOut, BURST_NOTE } from './burst.mjs';
 
 export const HOURLY = {
   minSameHourX: 5,
@@ -100,7 +101,8 @@ export function hourStats(bars, T, cat, cfg = HOURLY) {
     xp, cx, cum, cxs,
     x1: cur.qv / Math.max(med, floor), x2: cur.qv / Math.max(mean, floor),
     qv: cur.qv, chg: cur.o > 0 ? cur.c / cur.o - 1 : 0, price: cur.c,
-    rng: avgRangePct(bars, T)          /* 近 7 天平均 1H 振幅 %（量增價平用；Bybit 沒有歷史高低為 null） */
+    rng: avgRangePct(bars, T),         /* 近 7 天平均 1H 振幅 %（量增價平用；Bybit 沒有歷史高低為 null） */
+    bf: burstFeat(m, T)                /* 爆發標記用：這根振幅、7 天漲幅、7 天高低差（burst.mjs） */
   };
 }
 
@@ -158,6 +160,7 @@ export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
     const pre = ctx.preOf ? ctx.preOf(key) : null;
     const preT = pre == null ? null : typeof pre === 'number' ? pre : pre.t;
     const prePx = pre && typeof pre === 'object' && pre.price ? pre.price : null;
+    const burst = burstTag({ cat: e.cat, watch: !!e.watch, x1: e.stats.x1, bf: e.stats.bf });
     alerts.push({
       t: T, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat,
       x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1), qv: Math.round(e.stats.qv), chg: +(e.stats.chg * 100).toFixed(2),
@@ -167,7 +170,8 @@ export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
       ...(spike ? {} : { rampOnly: true }),
       ...(early ? { earlyMin: early.min } : {}),
       ...(preT != null && preT < T ? { preH: Math.round((T - preT) / H), ...(prePx ? { prePx } : {}) } : {}),
-      ...quietOf(e.stats.chg * 100, e.stats.rng, e.cat)
+      ...quietOf(e.stats.chg * 100, e.stats.rng, e.cat),
+      ...(burst ? { burst } : {}), ...(e.cat === 'crypto' ? bfOut(e.stats.bf) : {})
     });
     state.last[key] = { t: T, x1: e.stats.x1, ...(ramp ? { cx: e.stats.cx } : {}) };
   }
@@ -178,7 +182,7 @@ export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
   return alerts;
 }
 
-export const order = (a, b) => (b.watch - a.watch) || ((b.quiet || false) - (a.quiet || false)) || (a.closed - b.closed) || ((a.season || false) - (b.season || false)) || ((a.rampOnly || false) - (b.rampOnly || false)) || (b.single - a.single) || b.x1 - a.x1;
+export const order = (a, b) => (burstRank(a) - burstRank(b)) || (b.watch - a.watch) || ((b.quiet || false) - (a.quiet || false)) || (a.closed - b.closed) || ((a.season || false) - (b.season || false)) || ((a.rampOnly || false) - (b.rampOnly || false)) || (b.single - a.single) || b.x1 - a.x1;
 
 /* 同一檔在多家同時爆量時，推播合併成一則：以倍數最高的那家為主，其他家的成交額附在後面 */
 export function mergeByBase(alerts) {
@@ -188,7 +192,8 @@ export function mergeByBase(alerts) {
     if (g.length === 1) return g[0];
     const [main, ...rest] = g.slice().sort((a, b) => b.x1 - a.x1);
     const venues = new Set([main.venue, ...main.spikedOthers, ...rest.map(r => r.venue)]);
-    return { ...main, watch: g.some(a => a.watch), single: false, spikedOthers: [...venues].filter(v => v !== main.venue), also: rest };
+    const burst = g.some(a => a.burst === 'cand') ? 'cand' : g.every(a => a.burst === 'skip') ? 'skip' : undefined;
+    return { ...main, watch: g.some(a => a.watch), single: false, spikedOthers: [...venues].filter(v => v !== main.venue), also: rest, burst };
   }).sort(order);
 }
 
@@ -199,7 +204,7 @@ export const alink = a => link(a.base, tvUrl(a.venue, a.sym, '60'));
 export { VL, CAT };
 /* 標籤：【連續放量】、盤中推算已通知、幾小時前預警 */
 export function tagsOf(a) {
-  return `${a.quiet ? '【量增價平】' : ''}${a.watch ? '【自選】' : ''}${a.ramp ? '【連續放量】' : ''}${a.season ? '【時段性】' : ''}${a.closed ? '【週末休市】' : ''}`;
+  return `${burstLabel(a)}${a.quiet ? '【量增價平】' : ''}${a.watch ? '【自選】' : ''}${a.ramp ? '【連續放量】' : ''}${a.season ? '【時段性】' : ''}${a.closed ? '【週末休市】' : ''}`;
 }
 export function noteOf(a) {
   const n = [];
@@ -233,6 +238,8 @@ export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY
     const nt = noteOf(a);
     if (nt) L.push(`  ${nt}`);
   });
+  if (alerts.some(a => a.burst === 'cand')) L.push(BURST_NOTE.cand);
+  if (alerts.slice(0, cfg.maxLines).some(a => a.burst === 'skip')) L.push(BURST_NOTE.skip);
   if (alerts.some(a => a.closed)) L.push('【週末休市】＝標的現貨市場休市中，成交多半集中在少數交易所，訊號可靠度較低');
   if (alerts.some(a => a.rampOnly)) L.push('【連續放量】＝每根都沒到爆量門檻，但連續放大、累積量已大');
   if (alerts.some(a => a.season)) L.push('【時段性】＝這幾個小時平常每天也會放量（累積量、當根都未達同時段 2 倍），可靠度較低');
