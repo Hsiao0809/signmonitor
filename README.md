@@ -33,6 +33,8 @@ GitHub 排程是盡力執行，可能晚 5–30 分鐘或整輪略過。晚於�
 
 **發送紀錄**：每則 Telegram 訊息（含失敗的）都會存一行到 `logs/telegram/YYYY-MM-DD.jsonl`（台灣日期），欄位為 `time`、`run`、`part`、`ok`、`text`（純文字），由 workflow 自動 commit。只存訊息內容，不含 token 與 chat id；repo 公開，紀錄也公開。
 
+**發送失敗的處理**：連線逾時、連不上 Telegram、HTTP 429／5xx 會自動重試（最多 3 次，間隔 2、5、10 秒；429 依 Telegram 指定的等待秒數），單次請求最多等 20 秒。400、403 這類重試也沒用的錯誤不重試。某一則最終還是失敗，仍會繼續發同一輪後面的訊息，最後才以失敗結束；失敗那則在發送紀錄是 `ok:false`，`error` 欄位寫原因（連線問題以 `network:` 開頭），有重試過會有 `retries` 欄位。已經失敗的訊息不會在下一輪補發。
+
 手動執行：Actions → Monitor → Run workflow，`daily` 選 `force` 立刻跑每日掃描。在第 40–59 分執行會等到整點。
 公開 repo 連續 60 天沒有新 commit 時 GitHub 會停用排程；workflow 每週一會自動重新啟用。
 
