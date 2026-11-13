@@ -19,3 +19,4 @@
 {"time":"2026-11-13T17:00+08:00","run":"43396451279","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":371},{"k":"hourly","chars":1203},{"k":"pre","chars":1533}],"deferred":[],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-13T18:00+08:00","run":"43404632917","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":493},{"k":"hourly","chars":942},{"k":"pre","chars":1547}],"deferred":[],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-13T19:00+08:00","run":"43412280568","mode":"legacy","sent":"legacy","immediate":[{"k":"pre","chars":1517}],"deferred":[],"resonance":[],"digest":[],"pending":3}
+{"time":"2026-11-13T19:37+08:00","run":"43418506183","mode":"legacy","sent":"legacy","immediate":[],"deferred":[],"resonance":[],"digest":[{"k":"cross","n":1,"chars":346},{"k":"gainer","n":2,"chars":806}],"pending":0}
