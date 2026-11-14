@@ -4,3 +4,4 @@
 {"time":"2026-11-15T03:00+08:00","run":"43628871780","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":383},{"k":"hourly","chars":1193},{"k":"pre","chars":1711}],"deferred":[],"resonance":[],"digest":[],"pending":0}
 {"time":"2026-11-15T03:30+08:00","run":"43632412408","mode":"legacy","sent":"legacy","immediate":[],"deferred":[],"resonance":[],"digest":[],"pending":0}
 {"time":"2026-11-15T04:00+08:00","run":"43634308714","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":367},{"k":"pre","chars":1715},{"k":"events","chars":853}],"deferred":[],"resonance":[],"digest":[],"pending":0}
+{"time":"2026-11-15T05:00+08:00","run":"43639658862","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":3388},{"k":"pre","chars":1675},{"k":"dormant","chars":355}],"deferred":[],"resonance":[],"digest":[],"pending":0}
