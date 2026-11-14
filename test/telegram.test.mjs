@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import * as TT from '../src/telegram-topics.mjs';
+import { prevMark as M } from '../src/tag.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -197,6 +198,140 @@ test('notify：伺服器卡住不回應會逾時並重試，不會讓整輪卡�
   assert.equal(r.code, 1);
   assert.equal(calls.length, 2);
   assert.match(readLog(logs)[0].error, /^network:/);
+});
+
+/* ---- 上一則引用 ---- */
+const idsFor = (d, obj) => { const f = path.join(d, 'msgids.json'); fs.writeFileSync(f, JSON.stringify(obj)); return f; };
+const withIds = () => { let n = 100; return fakeTelegram((m, b) => (m === 'sendMessage' ? { ok: true, result: { message_id: ++n } } : { ok: true })); };
+const hourlyOut = (out, texts) => texts.forEach((t, i) => fs.writeFileSync(path.join(out, `telegram-${i + 1}-hourly.txt`), t));
+const H = 3600e3;
+const closeAll = (...xs) => xs.forEach(x => x && x.server.close());
+
+test('notify 上一則：發送後記下每個幣的 message_id；下一輪同話題同幣換成「上次」連結，整則同一個上一則就另外回覆', async () => {
+  const { server, calls, url } = await withIds();
+  try {
+    const d = tmp(), idf = path.join(d, 'msgids.json'), logs = tmp();
+    const env = { ...FAST, TELEGRAM_API: url, TELEGRAM_LOG_DIR: logs, TELEGRAM_MSGIDS_FILE: idf, TELEGRAM_TOPICS: JSON.stringify({ hourly: 7, cross: 9 }) };
+    /* 第 1 輪：沒有上一則 → 沒有連結、沒有回覆、記號不外洩；記下 id */
+    const o1 = tmp(); hourlyOut(o1, [`PEPE 爆量${M('PEPE')}\nBTC 爆量${M('BTC')}\nETH${M('ETH')}`, `XRP${M('XRP')}`]);
+    let r = await run('src/notify.mjs', [o1], env);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(calls[0].body.text, 'PEPE 爆量\nBTC 爆量\nETH');
+    assert.equal(calls[0].body.reply_parameters, undefined);
+    const ids = JSON.parse(fs.readFileSync(idf, 'utf8'));
+    assert.equal(ids['hourly|PEPE'].id, 101);
+    assert.equal(ids['hourly|PEPE'].th, 7);
+    assert.equal(ids['hourly|ETH'].id, 101);
+    assert.equal(ids['hourly|XRP'].id, 102);
+    assert.equal(readLog(logs)[0].msgId, 101);
+    /* 第 2 輪：各種組合（每則用不同的幣，避免同一輪內互相成為上一則） */
+    calls.length = 0;
+    const o2 = tmp(); hourlyOut(o2, [
+      `PEPE 又爆量${M('PEPE')}`,                                     /* 單幣、有上一則 → 連結＋回覆 */
+      `BTC${M('BTC')}\nETH${M('ETH')}`,                              /* 兩個幣上一則是同一則 → 連結＋回覆 */
+      `XRP${M('XRP')}\nNEW${M('NEW')}`,                              /* 有個幣沒有上一則 → 只有連結、不回覆 */
+      `沒有記號的訊息`
+    ]);
+    r = await run('src/notify.mjs', [o2], env);
+    assert.equal(r.code, 0, r.err);
+    const hm = ms => new Date(ms + 8 * H).toISOString().slice(11, 16);
+    const lk = (id, t) => `<a href="https://t.me/c/123/7/${id}">${hm(t)}</a>`;
+    assert.equal(calls[0].body.text, `PEPE 又爆量｜上次 ${lk(101, ids['hourly|PEPE'].t)}`);
+    assert.deepEqual(calls[0].body.reply_parameters, { message_id: 101, allow_sending_without_reply: true });
+    assert.equal(calls[1].body.text, `BTC｜上次 ${lk(101, ids['hourly|BTC'].t)}\nETH｜上次 ${lk(101, ids['hourly|ETH'].t)}`);
+    assert.equal(calls[1].body.reply_parameters.message_id, 101);
+    assert.equal(calls[2].body.text, `XRP｜上次 ${lk(102, ids['hourly|XRP'].t)}\nNEW`);
+    assert.equal(calls[2].body.reply_parameters, undefined);
+    assert.equal(calls[3].body.text, '沒有記號的訊息');
+    /* 發送紀錄是實際送出的文字（純文字，連結只剩「上次 HH:MM」），並記回覆對象 */
+    const l = readLog(logs).slice(-4);
+    assert.match(l[0].text, /^PEPE 又爆量｜上次 \d\d:\d\d$/);
+    assert.equal(l[0].replyTo, 101);
+    assert.equal(l[2].replyTo, undefined);
+    /* 最新的 id 取代舊的 */
+    const ids2 = JSON.parse(fs.readFileSync(idf, 'utf8'));
+    assert.equal(ids2['hourly|PEPE'].id, 103);
+    assert.equal(ids2['hourly|BTC'].id, 104);
+    assert.equal(ids2['hourly|NEW'].id, 105);
+  } finally { server.close(); }
+});
+
+test('notify 上一則：話題各算各的、超過 24 小時不引用、上一則不同則時只放連結不回覆、不同話題代號不回覆', async () => {
+  const { server, calls, url } = await withIds();
+  const d = tmp(), now = Date.now();
+  const idf = idsFor(d, {
+    'hourly|OLD': { t: now - 25 * H, id: 50, th: 7 },
+    'hourly|A': { t: now - 3 * H, id: 60, th: 7 },
+    'hourly|B': { t: now - 2 * H, id: 61, th: 7 },
+    'hourly|MOVED': { t: now - 2 * H, id: 62, th: 5 },
+    'cross|PEPE': { t: now - 1 * H, id: 70, th: 9 },
+    'general|X': { t: now - 1 * H, id: 71, th: 0 }
+  });
+  const env = { ...FAST, TELEGRAM_API: url, TELEGRAM_LOG_DIR: tmp(), TELEGRAM_MSGIDS_FILE: idf, TELEGRAM_TOPICS: JSON.stringify({ hourly: 7, cross: 9 }) };
+  const o = tmp(); hourlyOut(o, [
+    `OLD${M('OLD')}`,                          /* 25 小時前 → 當作第一次 */
+    `A${M('A')}\nB${M('B')}`,                  /* 上一則不同則 → 兩個連結、不回覆 */
+    `MOVED${M('MOVED')}`,                      /* 話題代號變了 → 連結照給，不回覆 */
+    `PEPE${M('PEPE')}`                         /* PEPE 只在 cross 話題發過，hourly 話題沒有 */
+  ]);
+  const r = await run('src/notify.mjs', [o], env);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(calls[0].body.text, 'OLD');
+  assert.match(calls[1].body.text, /^A｜上次 <a href="https:\/\/t\.me\/c\/123\/7\/60">.*<\/a>\nB｜上次 <a href="https:\/\/t\.me\/c\/123\/7\/61">/);
+  assert.equal(calls[1].body.reply_parameters, undefined);
+  assert.match(calls[2].body.text, /^MOVED｜上次 <a href="https:\/\/t\.me\/c\/123\/5\/62">/);
+  assert.equal(calls[2].body.reply_parameters, undefined);
+  assert.equal(calls[3].body.text, 'PEPE');
+  server.close();
+});
+
+test('notify 上一則：回覆被 Telegram 拒絕就不引用再送一次；紀錄壞掉或群組編號格式不符照常發送、記號不外洩', async () => {
+  /* 回覆被拒 */
+  const a = await fakeTelegram((m, b) => (b.reply_parameters ? { ok: false, status: 400, desc: 'Bad Request: message to be replied not found' } : { ok: true, result: { message_id: 200 } }));
+  const d = tmp(), now = Date.now();
+  const idf = idsFor(d, { 'hourly|A': { t: now - H, id: 60, th: 7 } });
+  const o = tmp(); hourlyOut(o, [`A${M('A')}`]);
+  let r = await run('src/notify.mjs', [o], { ...FAST, TELEGRAM_API: a.url, TELEGRAM_LOG_DIR: tmp(), TELEGRAM_MSGIDS_FILE: idf, TELEGRAM_TOPICS: '{"hourly":7}' });
+  a.server.close();
+  assert.equal(r.code, 0, r.err);
+  assert.equal(a.calls.length, 2);
+  assert.ok(a.calls[0].body.reply_parameters);
+  assert.equal(a.calls[1].body.reply_parameters, undefined);
+  assert.match(a.calls[1].body.text, /^A｜上次 <a href=/);
+  /* 紀錄檔壞掉 */
+  const b = await withIds();
+  const bad = path.join(tmp(), 'msgids.json'); fs.writeFileSync(bad, '壞掉{');
+  const o2 = tmp(); hourlyOut(o2, [`A${M('A')}`]);
+  r = await run('src/notify.mjs', [o2], { ...FAST, TELEGRAM_API: b.url, TELEGRAM_LOG_DIR: tmp(), TELEGRAM_MSGIDS_FILE: bad });
+  assert.equal(r.code, 0, r.err);
+  assert.equal(b.calls[0].body.text, 'A');
+  assert.equal(JSON.parse(fs.readFileSync(bad, 'utf8'))['hourly|A'].id, 101);   /* 壞掉的紀錄檔被重新寫成正確的 */
+  /* 群組不是 -100 開頭：只放文字不放連結，仍可回覆 */
+  const o3 = tmp(); hourlyOut(o3, [`A${M('A')}`]);
+  r = await run('src/notify.mjs', [o3], { ...FAST, TELEGRAM_API: b.url, TELEGRAM_LOG_DIR: tmp(), TELEGRAM_MSGIDS_FILE: bad, TELEGRAM_CHAT_ID: '-555' });
+  b.server.close();
+  assert.match(b.calls[1].body.text, /^A｜上次 \d\d:\d\d$/);
+  assert.equal(b.calls[1].body.text.includes('<a'), false);
+  assert.equal(b.calls[1].body.reply_parameters.message_id, 101);
+});
+
+test('notify 上一則：發送失敗的訊息不記 id；跨日的上一則帶日期', async () => {
+  const f = await flakyTelegram(() => ({ status: 403, json: { ok: false, description: 'Forbidden' } }));
+  const d = tmp(), idf = path.join(d, 'msgids.json');
+  const o = tmp(); hourlyOut(o, [`A${M('A')}`]);
+  let r = await run('src/notify.mjs', [o], { ...FAST, TELEGRAM_API: f.url, TELEGRAM_LOG_DIR: tmp(), TELEGRAM_MSGIDS_FILE: idf });
+  f.server.close();
+  assert.equal(r.code, 1);
+  assert.equal(fs.existsSync(idf), false);
+  const g = await withIds();
+  const now = Date.now();
+  fs.writeFileSync(idf, JSON.stringify({ '|A': { t: now - 23 * H, id: 60, th: 0 } }));
+  const o2 = tmp(); fs.writeFileSync(path.join(o2, 'telegram-1.txt'), `A${M('A')}`);
+  r = await run('src/notify.mjs', [o2], { ...FAST, TELEGRAM_API: g.url, TELEGRAM_LOG_DIR: tmp(), TELEGRAM_MSGIDS_FILE: idf });
+  g.server.close();
+  const td = ms => new Date(ms + 8 * H).toISOString();
+  const t = now - 23 * H, same = td(t).slice(0, 10) === td(Date.now()).slice(0, 10);
+  assert.match(g.calls[0].body.text, same ? /上次 <a href="https:\/\/t\.me\/c\/123\/60">\d\d:\d\d<\/a>$/ : /上次 <a href="https:\/\/t\.me\/c\/123\/60">\d\d-\d\d \d\d:\d\d<\/a>$/);
 });
 
 test('notify：沒設定 token 或 chat id 就略過', async () => {

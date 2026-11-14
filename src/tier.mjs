@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { TOPICS } from './telegram-topics.mjs';
 import { fmtP } from './tracker.mjs';
+import { prevMark } from './tag.mjs';
 
 const H = 3600e3;
 export const EARLY = ['quiet', 'hourly', 'pre', 'dormant', 'rate'];
@@ -26,6 +27,7 @@ export const DEFAULTS = {
   resonanceCoolHours: 24,
   keepHours: 72,
   showNth: true,                 /* 每個幣後面標「今日第 N 次」（獨立於 mode，legacy 也有效）；false＝不標 */
+  showPrev: true,                /* 每個幣後面標「上次 HH:MM」連到同話題上一則（24 小時內），單幣時另用回覆引用；false＝不標也不引用 */
   tiers: {}                      /* 例：{ "gainer": "A" } 把某個類型改回即時推 */
 };
 
@@ -94,6 +96,29 @@ export function nthCounter(nowMs, opts = {}) {
     return k => base => (runs.get(`${k}|${normBase(base)}`)?.size || 0) + 1;
   } catch (e) {
     console.error(`tier nth error: ${e.message}，本輪不標次數`);
+    return null;
+  }
+}
+
+/**
+ * 訊息的幣後標籤產生器：k => f（f 給文字函式當最後一個參數，見 tag.mjs 的 nthTag）。
+ * f(base) 回傳今日第幾次（showNth 開且狀態讀得到）；f.nth === false 表示不標次數；
+ * f.prev(base) 回傳「上次」佔位記號（showPrev 開），notify.mjs 發送前才換成連結。
+ * 兩個都關或出錯回傳 null（呼叫端不標）。opts.nth === false 只用在盤中推算（那條路徑不計次數）。
+ */
+export function tagger(nowMs, opts = {}) {
+  try {
+    const cfg = opts.cfg || loadConfig(opts.configFile);
+    const NT = opts.nth === false ? null : nthCounter(nowMs, { ...opts, cfg });
+    const prev = cfg.showPrev ? (base => prevMark(normBase(base))) : null;
+    if (!NT && !prev) return null;
+    return k => {
+      const f = NT ? NT(k) : Object.assign(() => 0, { nth: false });
+      if (prev) f.prev = prev;
+      return f;
+    };
+  } catch (e) {
+    console.error(`tier tagger error: ${e.message}，本輪不加標籤`);
     return null;
   }
 }

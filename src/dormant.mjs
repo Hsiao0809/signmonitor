@@ -11,6 +11,7 @@
    但照訊號直接進場的中位數為負，只當觀察，不是進場訊號。
    ============================================================ */
 import zlib from 'node:zlib';
+import { nthTag } from './tag.mjs';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 
 const H = 3600e3, D = 24 * H;
@@ -113,7 +114,7 @@ export function wakeAlertText(events, T, url = '', cfg = DORMANT, nth = null) {
   if (!events.length) return '';
   const L = [`【沉睡甦醒】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${events.length} 檔；10 天窄幅後 OKX、Bitget 同時放量）`];
   events.slice(0, cfg.maxLines).forEach(e => {
-    L.push(`${e.kind === 'B' ? '【30天新高量】' : ''}${e.upgrade ? '【升級】' : ''}${link(e.base, tvUrl('okx', e.okx.sym, '60'))} ${legTxt('OKX', e.okx, e.kind)}／${legTxt('Bitget', e.bitget, e.kind)}${nth ? `｜今日第 ${nth(e.base)} 次` : ''}`);
+    L.push(`${e.kind === 'B' ? '【30天新高量】' : ''}${e.upgrade ? '【升級】' : ''}${link(e.base, tvUrl('okx', e.okx.sym, '60'))} ${legTxt('OKX', e.okx, e.kind)}／${legTxt('Bitget', e.bitget, e.kind)}${nthTag(nth, e.base)}`);
     L.push(`  價格 ${fmtP(e.price)}｜這根 ${pcs(e.okx.chg)}｜距 10 天高點 ${pcs(e.okx.pos)}｜10 天區間 ${e.okx.range}%`);
   });
   if (events.length > cfg.maxLines) L.push(`另有 ${events.length - cfg.maxLines} 檔，見網頁`);

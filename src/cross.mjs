@@ -8,6 +8,7 @@
      全部金叉 每筆 +0.76%、勝率 27%；A 級條件 每筆 +4.65%、勝率 39%，但利潤集中在少數大波段。
    ============================================================ */
 import zlib from 'node:zlib';
+import { nthTag } from './tag.mjs';
 import { tpe, fmtP, link } from './tracker.mjs';
 import { weekendClosed } from './hourly.mjs';
 
@@ -178,7 +179,7 @@ export function crossAlertText(newA, newB, latestT, url = '', cfg = CROSS, nth =
   if (!newA.length) return '';
   const L = [`【${lab(cfg)}金叉】${barLabel(latestT, cfg)} 台灣時間收盤（A 級 ${newA.length} 檔）`];
   newA.slice(0, cfg.maxLines).forEach(x => {
-    L.push(`${link(x.base, binanceTv(x.sym, cfg))}${tags(x)} 收 ${fmtP(x.close)}｜量 ${x.volx}x｜距 SMA200 ${sg(x.px200)}${nth ? `｜今日第 ${nth(x.base)} 次` : ''}`);
+    L.push(`${link(x.base, binanceTv(x.sym, cfg))}${tags(x)} 收 ${fmtP(x.close)}｜量 ${x.volx}x｜距 SMA200 ${sg(x.px200)}${nthTag(nth, x.base)}`);
     L.push(`  上穿 ${sg(x.spread, 2)}｜近 ${cfg.stopBars} 根低點 ${fmtP(x.stopPx)}（-${x.stopPct.toFixed(1)}%）｜24h 成交額 ${money(x.qv24h)}`);
   });
   if (newA.length > cfg.maxLines) L.push(`另有 ${newA.length - cfg.maxLines} 檔，見清單頁`);

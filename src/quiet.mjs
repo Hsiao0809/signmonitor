@@ -8,6 +8,7 @@
    量增價平只代表「有量、價格還沒反應」，可能吸籌也可能出貨，方向未定。
    ============================================================ */
 import zlib from 'node:zlib';
+import { nthTag } from './tag.mjs';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 
 export const QUIET = {
@@ -121,7 +122,7 @@ export function quietAlertText(items, nowMs, url = '', cfg = QUIET, nth = null) 
   items.slice(0, cfg.maxLines).forEach(it => {
     const unit = it.src === 'hourly' ? '1H' : '當日';
     const ref = it.ref == null ? `門檻 ±${it.lim}%` : `${it.src === 'hourly' ? '平常 1H 振幅' : 'ATR'} ${it.ref}%`;
-    L.push(`${itLink(it)}［${CAT[it.cat] || it.cat}］${SRC[it.src]} ${it.x}x｜${unit} ${sg(it.chg)}（${ref}）｜價 ${fmtP(it.price)}${nth ? `｜今日第 ${nth(it.base)} 次` : ''}`);
+    L.push(`${itLink(it)}［${CAT[it.cat] || it.cat}］${SRC[it.src]} ${it.x}x｜${unit} ${sg(it.chg)}（${ref}）｜價 ${fmtP(it.price)}${nthTag(nth, it.base)}`);
   });
   if (items.length > cfg.maxLines) L.push(`另有 ${items.length - cfg.maxLines} 檔，見網頁`);
   if (url) L.push(url);

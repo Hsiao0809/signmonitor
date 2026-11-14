@@ -13,6 +13,7 @@ import * as RT from '../src/rate.mjs';
 import * as G from '../src/gainer.mjs';
 import * as C from '../src/cross.mjs';
 import { fmtP } from '../src/tracker.mjs';
+import * as TG from '../src/tag.mjs';
 
 const H = 3600e3;
 /* 台灣時間 → UTC 毫秒 */
@@ -236,6 +237,77 @@ test('文字：多檔各標各的次數', () => {
   const t = G.gainerAlertText(gain, T, '', undefined, b => (b === 'AAA' ? 1 : 4));
   assert.match(t, /AAA.*｜今日第 1 次/);
   assert.match(t, /BBB.*｜今日第 4 次/);
+});
+
+test('記號：8 種文字的每個幣後面都放「上次」佔位記號（盤中推算也有）；只有記號、沒有次數時不標次數', () => {
+  const T = Date.UTC(2026, 10, 12, 3, 0);
+  const hour = HR.pickAlerts(HR.emptyHourly(), [{ venue: 'okx', sym: 'X-USDT-SWAP', base: 'X', cat: 'crypto', stats: { x1: 8, x2: 5, qv: 4e6, chg: 0, price: 1 } }], T);
+  const pre = E.pickPre(E.emptyPre(), [{ venue: 'okx', sym: 'A-USDT-SWAP', base: 'A', cat: 'crypto', stats: { x1: 2.5, x2: 2, xp: 2.1, cx: null, qv: 5e5, chg: 0, price: 0.3712 } }], T);
+  const quiet = [{ key: 's:B:1', src: 'short', base: 'B', cat: 'stock', venue: 'okx', id: 'B-USDT-SWAP', t: T, price: 20, chg: -0.8, lim: 1.5, ref: 3, x: 4.2, r: {} }];
+  const wake = [{ base: 'IRYS', kind: 'A', okx: { sym: 'IRYS-USDT-SWAP', qv: 2e6, xA: 12, chg: 3, pos: -1, range: 20 }, bitget: { qv: 1e6, xA: 9 }, price: 0.5 }];
+  const rate = [{ ccy: 'ABC', v: 1.2, base: 0.2, x: 6, pre: 0.25, est: 1.2, last: 0.0123, chg: -0.05, by: 'est' }];
+  const gain = [{ base: 'AAA', tfs: ['1h'], chg: 50, ex: {}, qv: 1e6, c: 1, brk: 0.9, drop: 5, hi24: 1.2, stop: 3, tags: [] }];
+  const cross = [{ base: 'TEST', sym: 'TESTUSDT', close: 1, volx: 2, px200: 3, spread: 0.5, stopPx: 0.9, stopPct: 10, qv24h: 1e6 }];
+  const k = { venue: 'okx', sym: 'BTW-USDT-SWAP', base: 'BTW', cat: 'crypto' };
+  const intra = E.pickEarly(E.emptyPre(), HR.emptyHourly(), [{ ...k, stats: { x1: 6, x2: 4, qv: 3e6, qvNow: 7.5e5, chg: 0, price: 1 } }], T, 15);
+  assert.equal(intra.length, 1);
+  const cases = [
+    ['hourly', 'X', n => HR.hourlyAlertText(hour, T, [], '', undefined, n)],
+    ['pre', 'A', n => E.preAlertText(pre, T, '', undefined, n)],
+    ['quiet', 'B', n => Q.quietAlertText(quiet, T, '', undefined, n)],
+    ['dormant', 'IRYS', n => DM.wakeAlertText(wake, T, '', undefined, n)],
+    ['rate', 'ABC', n => RT.rateAlertText(rate, T, '', undefined, null, 7, n)],
+    ['gainer', 'AAA', n => G.gainerAlertText(gain, T, '', undefined, n)],
+    ['cross', 'TEST', n => C.crossAlertText(cross, [], T, '', undefined, n)],
+    ['crossd', 'TEST', n => C.crossAlertText(cross, [], T, '', C.CROSS_D, n)],
+    ['intrahour', 'BTW', n => E.earlyAlertText(intra, T, 15, '', undefined, n)]
+  ];
+  for (const [name, base, f] of cases) {
+    const plain = f(null);
+    assert.equal(TG.marksOf(plain).length, 0, `${name} 不傳時沒有記號`);
+    /* 次數＋記號：記號緊接在「今日第 N 次」後面 */
+    const both = Object.assign(() => 3, { prev: TG.prevMark });
+    const t1 = f(both);
+    assert.ok(t1.includes(`｜今日第 3 次${TG.prevMark(base)}`), `${name}：記號緊接在次數後面`);
+    assert.deepEqual(TG.marksOf(t1), [base], `${name} 一個幣一個記號`);
+    assert.equal(TG.stripMarks(t1), f(() => 3), `${name} 拿掉記號就是只有次數的版本`);
+    /* 只有記號（盤中推算、或 showNth 關閉） */
+    const onlyPrev = Object.assign(() => 0, { nth: false, prev: TG.prevMark });
+    const t2 = f(onlyPrev);
+    assert.equal(t2.includes('今日第'), false, `${name} 不標次數`);
+    assert.equal(TG.stripMarks(t2), plain, `${name} 只有記號時，拿掉記號與原本完全相同`);
+  }
+});
+
+test('記號：幣名含特殊字元也能來回轉換，不會被 HTML 跳脫弄壞', () => {
+  for (const b of ['PEPE', '币安人生', "A'B(C)*", 'A&B<C>', 'a b']) {
+    const t = `x ${TG.prevMark(b)} y`;
+    assert.deepEqual(TG.marksOf(t), [b]);
+    assert.equal(TG.stripMarks(t), 'x  y');
+    assert.equal(TG.replaceMarks(t, v => `[${v}]`), `x [${b}] y`);
+  }
+  assert.equal(TG.marksOf('沒有記號').length, 0);
+  assert.deepEqual(TG.marksOf(`${TG.prevMark('A')}${TG.prevMark('A')}${TG.prevMark('B')}`), ['A', 'B']);
+});
+
+test('tagger：showNth／showPrev 各自開關；兩個都關回傳 null；1000PEPE 與 PEPE 記號相同', () => {
+  const now = tw('2026-11-12 14:00'), dir = tmp();
+  TR.saveState(dir, { ...TR.emptyState(), signals: [{ t: tw('2026-11-12 09:00'), k: 'hourly', base: 'AAA' }] });
+  const both = TR.tagger(now, { cfg: cfgOf({}), dir })('hourly');
+  assert.equal(both('AAA'), 2);
+  assert.equal(both.prev('1000PEPE'), TG.prevMark('PEPE'));
+  assert.equal(both.prev('PEPE'), TG.prevMark('PEPE'));
+  const onlyN = TR.tagger(now, { cfg: cfgOf({ showPrev: false }), dir })('hourly');
+  assert.equal(onlyN('AAA'), 2);
+  assert.equal(onlyN.prev, undefined);
+  const onlyP = TR.tagger(now, { cfg: cfgOf({ showNth: false }), dir })('hourly');
+  assert.equal(onlyP.nth, false);
+  assert.equal(typeof onlyP.prev, 'function');
+  assert.equal(TR.tagger(now, { cfg: cfgOf({ showNth: false, showPrev: false }), dir }), null);
+  const intra = TR.tagger(now, { cfg: cfgOf({}), dir: tmp(), nth: false })('pre');
+  assert.equal(intra.nth, false);
+  assert.equal(typeof intra.prev, 'function');
+  assert.equal(TR.loadConfig(path.join(tmp(), 'none.json'), {}).showPrev, true);
 });
 
 test('共振：每檔帶價格，優先用這一輪訊號的價格，沒有就用最近一次有價格的；都沒有顯示 —', () => {
