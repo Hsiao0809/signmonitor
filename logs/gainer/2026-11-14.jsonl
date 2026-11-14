@@ -1,2 +1,8 @@
 {"t":1794592800000,"k":"gold","b":"SOPH","key":"SOPH","tfs":["1h"],"c":0.001817,"brk":0.001822,"peak":0.002155,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","SOPH-USDT-SWAP"]}
 {"t":1794600000000,"k":"gnew","b":"SOPH","key":"SOPH","tfs":["1h"],"c":0.001765,"brk":0.001768,"peak":0.002155,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","SOPH-USDT-SWAP"]}
+{"t":1794614400000,"k":"gnew","b":"SHELL","key":"SHELL","tfs":["1h"],"c":0.03634,"brk":0.03635,"peak":0.0504,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","SHELL-USDT-SWAP"]}
+{"t":1794614400000,"k":"gold","b":"SHELL","key":"SHELL","tfs":["1h"],"c":0.03634,"brk":0.03801,"peak":0.0504,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","SHELL-USDT-SWAP"]}
+{"t":1794614400000,"k":"gnew","b":"UNITAS","key":"UNITAS","tfs":["1h"],"c":0.1853,"brk":0.1894,"peak":0.2072,"avoid":0,"tags":["wide"],"src":["bitget","UNITASUSDT"]}
+{"t":1794614400000,"k":"gold","b":"UNITAS","key":"UNITAS","tfs":["1h"],"c":0.1853,"brk":0.1894,"peak":0.2072,"avoid":0,"tags":["wide"],"src":["bitget","UNITASUSDT"]}
+{"t":1794614400000,"k":"gnew","b":"UP","key":"UP","tfs":["1h"],"c":0.1858,"brk":0.1892,"peak":0.207,"avoid":1,"tags":["spike","wide"],"src":["okx","UP-USDT-SWAP"]}
+{"t":1794614400000,"k":"gold","b":"UP","key":"UP","tfs":["1h"],"c":0.1858,"brk":0.1892,"peak":0.207,"avoid":1,"tags":["spike","wide"],"src":["okx","UP-USDT-SWAP"]}
