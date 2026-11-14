@@ -7,3 +7,4 @@
 {"t":1794614400000,"k":"gnew","b":"UP","key":"UP","tfs":["1h"],"c":0.1858,"brk":0.1892,"peak":0.207,"avoid":1,"tags":["spike","wide"],"src":["okx","UP-USDT-SWAP"]}
 {"t":1794614400000,"k":"gold","b":"UP","key":"UP","tfs":["1h"],"c":0.1858,"brk":0.1892,"peak":0.207,"avoid":1,"tags":["spike","wide"],"src":["okx","UP-USDT-SWAP"]}
 {"t":1794628800000,"k":"gold","b":"SHELL","key":"SHELL","tfs":["4h"],"c":0.03188,"brk":0.03427,"peak":0.0504,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","SHELL-USDT-SWAP"]}
+{"t":1794636000000,"k":"gold","b":"AKE","key":"AKE","tfs":["1h"],"c":0.011946,"brk":0.012006,"peak":0.014197,"avoid":1,"tags":["spike","wide"],"src":["okx","AKE-USDT-SWAP"]}
