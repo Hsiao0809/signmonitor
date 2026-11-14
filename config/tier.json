@@ -4,5 +4,6 @@
   "resonanceHours": 48,
   "resonanceCoolHours": 24,
   "showNth": true,
+  "showPrev": true,
   "tiers": {}
 }

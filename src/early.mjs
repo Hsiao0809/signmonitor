@@ -7,6 +7,7 @@
    正式爆量通知會註明「第 N 分已推算通知」「N 小時前已預警」。
    ============================================================ */
 import zlib from 'node:zlib';
+import { nthTag } from './tag.mjs';
 import { tpe, fmtP } from './tracker.mjs';
 import {
   HOURLY, isAnomaly, isRamp, preKind, crossVenue, groupByBase, weekendClosed, hourStats, order,
@@ -181,7 +182,7 @@ export function preAlertText(added, T, url = '', ecfg = EARLY, nth = null) {
   if (!added.length) return '';
   const L = [`【預警】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${added.length} 檔，比前一根 ≥2x 或同時段 ≥2x，還沒到正式爆量）`];
   added.slice(0, ecfg.preMaxLines).forEach(p => L.push(
-    `${burstLabel(p)}${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}｜價 ${p.price ? fmtP(p.price) : '—'}${nth ? `｜今日第 ${nth(p.base)} 次` : ''}`));
+    `${burstLabel(p)}${p.watch ? '【自選】' : ''}${p.closed ? '【週末休市】' : ''}${alink(p)}［${CAT[p.cat] || p.cat}］${VL[p.venue]} 前一根 ${sx(p.xp)}／同時段 ${sx(p.x1)}｜1H ${pcs(p.chg)}｜${money(p.qv)}｜價 ${p.price ? fmtP(p.price) : '—'}${nthTag(nth, p.base)}`));
   if (added.length > ecfg.preMaxLines) L.push(`另有 ${added.length - ecfg.preMaxLines} 檔，見網頁「盤中爆量」分頁`);
   if (added.some(p => p.burst === 'cand')) L.push(BURST_NOTE.cand);
   if (added.slice(0, ecfg.preMaxLines).some(p => p.burst === 'skip')) L.push(BURST_NOTE.skip);
@@ -192,12 +193,12 @@ export function preAlertText(added, T, url = '', ecfg = EARLY, nth = null) {
 
 const MOVED = { up: '已漲過', down: '已跌過' };
 /** all 含已漲過／跌過的；那些不推播，只在最後註明幾檔 */
-export function earlyAlertText(all, T, minute, url = '', ecfg = EARLY) {
+export function earlyAlertText(all, T, minute, url = '', ecfg = EARLY, nth = null) {
   const alerts = all.filter(a => !a.moved), skipped = all.length - alerts.length;
   if (!alerts.length) return '';
   const L = [`【盤中推算】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間，第 ${minute} 分（${alerts.length} 檔；依已成交量推算整根）`];
   alerts.forEach(a => {
-    L.push(`${burstLabel(a)}${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★推算 ${a.x1}x 同時段／${a.x2}x 近48h`);
+    L.push(`${burstLabel(a)}${a.watch ? '【自選】' : ''}${a.closed ? '【週末休市】' : ''}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ★推算 ${a.x1}x 同時段／${a.x2}x 近48h${nthTag(nth, a.base)}`);
     L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（這根目前 ${pcs(a.chg)}${a.chg24 != null ? `，前24h ${pcs(a.chg24)}／日ATR ${a.atrp}%` : ''}）｜已成交 ${money(a.qvNow)}，推算整根 ${money(a.qv)}`);
     L.push(`  ${othersLine(a)}`);
   });

@@ -10,6 +10,7 @@
      - 預警：比前一根 ≥ pre.prevX 倍，或同時段 ≥ pre.sameX 倍（還沒到正式爆量）→ 每小時一則摘要（early.mjs）
    ============================================================ */
 import { avgRangePct, quietHour } from './quiet.mjs';
+import { nthTag } from './tag.mjs';
 import zlib from 'node:zlib';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 import { burstFeat, burstTag, burstRank, burstLabel, bfOut, BURST_NOTE } from './burst.mjs';
@@ -231,7 +232,7 @@ export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY
   alerts = mergeByBase(alerts);
   const L = [`【盤中爆量】${tpe(T).slice(5, 10)} ${hhmm(T)}–${hhmm(T + H)} 台灣時間（${alerts.length} 檔）`];
   alerts.slice(0, cfg.maxLines).forEach(a => {
-    L.push(`${tagsOf(a)}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ${xLine(a)}${nth ? `｜今日第 ${nth(a.base)} 次` : ''}`);
+    L.push(`${tagsOf(a)}${alink(a)}［${CAT[a.cat] || a.cat}］${kind(a)} ${xLine(a)}${nthTag(nth, a.base)}`);
     const qv = a.also ? [a, ...a.also].map(x => `${VL[x.venue]} ${money(x.qv)}`).join('＋') : money(a.qv);
     L.push(`  價格 ${a.price ? fmtP(a.price) : '—'}（1H ${a.chg >= 0 ? '+' : ''}${a.chg.toFixed(1)}%）｜成交額 ${qv}`);
     L.push(`  ${othersLine(a)}`);

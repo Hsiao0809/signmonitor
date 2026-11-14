@@ -416,8 +416,8 @@ async function main() {
   }
 
   /* 每個幣後面標「今日第 N 次」（config/tier.json 的 showNth；null＝不標）。只用在 Telegram 通知，Issue 與網頁文字不動 */
-  const NT = TR.nthCounter(nowMs);
-  const nk = k => (NT ? NT(k) : null);
+  const TG = TR.tagger(nowMs);
+  const nk = k => (TG ? TG(k) : null);
   const msgs = [];
   /* 量增價平另發一則，排在最前面 */
   if (qadded.length) msgs.push({ k: 'quiet', text: Q.quietAlertText(qadded, nowMs, a['quiet-url'] || '', undefined, nk('quiet')) });

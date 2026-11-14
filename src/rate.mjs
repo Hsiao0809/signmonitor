@@ -10,6 +10,7 @@
    穩定幣不看。Bybit 的借幣利率 API 擋 GitHub Actions 與雲端 IP，所以只有 OKX。
    ============================================================ */
 import zlib from 'node:zlib';
+import { nthTag } from './tag.mjs';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 
 const H = 3600e3, D = 24 * H;
@@ -97,7 +98,7 @@ export function rateAlertText(events, T, url = '', cfg = RATE, auto = null, days
   if (!events.length) return '';
   const L = [`【借幣利率飆高】${tpe(T).slice(5, 10)} ${hhmm(T)} 台灣時間（OKX 槓桿借幣，${events.length} 檔）`];
   events.slice(0, cfg.maxLines).forEach(e => {
-    L.push(`${e.by === 'est' ? '【預估】' : ''}${e.re ? '【再升】' : ''}${link(e.ccy, tvOf(e.ccy))} 年化 ${apr(e.v)}（7 天中位數 ${apr(e.base)}，${e.x}x）${nth ? `｜今日第 ${nth(e.ccy)} 次` : ''}`);
+    L.push(`${e.by === 'est' ? '【預估】' : ''}${e.re ? '【再升】' : ''}${link(e.ccy, tvOf(e.ccy))} 年化 ${apr(e.v)}（7 天中位數 ${apr(e.base)}，${e.x}x）${nthTag(nth, e.ccy)}`);
     L.push(`  本小時 ${apr(e.pre)}｜下一小時預估 ${apr(e.est)}｜價格 ${e.last ? `${fmtP(e.last)}（24h ${pcs(e.chg)}）` : '—'}`);
   });
   if (events.length > cfg.maxLines) L.push(`另有 ${events.length - cfg.maxLines} 檔，見網頁`);

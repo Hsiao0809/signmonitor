@@ -12,6 +12,7 @@ import * as V from './venues.mjs';
 import * as HR from './hourly.mjs';
 import * as HS from './hourly-scan.mjs';
 import * as E from './early.mjs';
+import * as TR from './tier.mjs';
 import { parseWatch } from './watch.mjs';
 import { tpe, render } from './tracker.mjs';
 
@@ -57,7 +58,8 @@ async function main() {
   const note = `最近一次盤中推算：${tpe(T)}–${tpe(T + H).slice(11)} 台灣時間這根 1H K 第 ${minute} 分；OKX ${cnt('okx')} 檔、Bitget ${cnt('bitget')} 檔，本輪 ${alerts.length} 檔`;
   fs.writeFileSync(path.join(outDir, 'pre-body.md'), E.preBody(pstate, { nowMs, warnings, note }, t => render(t, 'md')));
   const pushed = alerts.filter(x => !x.moved);
-  const msg = E.earlyAlertText([...HR.mergeByBase(pushed), ...alerts.filter(x => x.moved)], T, minute, a['pre-url'] || '');
+  const TG = TR.tagger(nowMs, { nth: false });   /* 盤中推算不計「今日第 N 次」，只標「上次」 */
+  const msg = E.earlyAlertText([...HR.mergeByBase(pushed), ...alerts.filter(x => x.moved)], T, minute, a['pre-url'] || '', undefined, TG ? TG('pre') : null);
   if (msg) fs.writeFileSync(path.join(outDir, fileName(1, 'pre')), render(msg, 'html'));
   console.log(`intrahour=${tpe(T)}+${minute}m entries=${entries.length} alerts=${alerts.length} pushed=${pushed.length}`);
   warnings.forEach(w => console.log('warning:', w));

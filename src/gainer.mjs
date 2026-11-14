@@ -14,6 +14,7 @@
    沒有回測，只當觀察。
    ============================================================ */
 import zlib from 'node:zlib';
+import { nthTag } from './tag.mjs';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 
 const H = 3600e3, D = 24 * H;
@@ -246,7 +247,7 @@ export function gainerAlertText(events, T, url = '', cfg = GAINER, nth = null) {
   /* 每檔一個段落（空行隔開）：run.mjs 依空行切段，過長時從段落之間切開，不會把連結標記切斷 */
   const blocks = [`【做空候選・轉弱】${tpe(T).slice(5, 10)} ${hhmm(T)} 台灣時間（${events.length} 檔）`];
   events.slice(0, cfg.maxLines).forEach(e => {
-    const L = [`${link(e.base, tvOf(e))} ${tfText(e.tfs)} 轉弱｜24h ${pcs(e.chg)}（${exText(e.ex)}）｜成交額 ${money(e.qv)}${nth ? `｜今日第 ${nth(e.base)} 次` : ''}`];
+    const L = [`${link(e.base, tvOf(e))} ${tfText(e.tfs)} 轉弱｜24h ${pcs(e.chg)}（${exText(e.ex)}）｜成交額 ${money(e.qv)}${nthTag(nth, e.base)}`];
     L.push(`  收 ${fmtP(e.c)} 跌破${e.rule === 'range' ? '高點後回檔低點' : '前一根低'} ${fmtP(e.brk)}｜自高點回落 ${e.drop}%｜停損（24h 高）${e.hi24 ? fmtP(e.hi24) : '—'}${e.stop != null ? `（距現價 ${e.stop}%）` : ''}`);
     const tg = tagText(e.tags);
     if (tg.length) L.push(`  ${isAvoid(e.tags) ? '⚠ ' : ''}${tg.join('；')}`);
