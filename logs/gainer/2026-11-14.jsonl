@@ -12,3 +12,4 @@
 {"t":1794650400000,"k":"gold","b":"UP","key":"UP","tfs":["4h"],"c":0.1676,"brk":0.1777,"peak":0.207,"avoid":1,"tags":["spike","wide"],"src":["okx","UP-USDT-SWAP"]}
 {"t":1794650400000,"k":"gnew","b":"UNITAS","key":"UNITAS","tfs":["4h"],"c":0.1677,"brk":0.1776,"peak":0.2072,"avoid":0,"tags":["wide"],"src":["bitget","UNITASUSDT"]}
 {"t":1794650400000,"k":"gold","b":"UNITAS","key":"UNITAS","tfs":["4h"],"c":0.1677,"brk":0.1776,"peak":0.2072,"avoid":0,"tags":["wide"],"src":["bitget","UNITASUSDT"]}
+{"t":1794657600000,"k":"gnew","b":"AKE","key":"AKE","tfs":["1h"],"c":0.012619,"brk":0.012663,"peak":0.0181,"avoid":1,"tags":["spike","wide"],"src":["okx","AKE-USDT-SWAP"]}
