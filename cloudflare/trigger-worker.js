@@ -214,21 +214,41 @@ async function dashboard(env) {
 }
 
 /* ---------- 交易所檢查（顯示用；監控程式會自己再比對一次） ---------- */
-async function okJson(url) { try { const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }); return r.ok ? r.json() : null; } catch { return null; } }
-async function exists(url) { try { const r = await fetch(url, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0' } }); return r.ok; } catch { return false; } }
+/* 查詢結果分三種：ok（有資料）、none（交易所明確說沒有）、fail（網路錯誤、被擋、限流、5xx）。
+   fail 不能當成「沒有合約」，否則一次查詢失敗就會顯示「三家都找不到」。失敗會重試一次。 */
+async function probe(url, { method = 'GET', noneStatus = [400, 404] } = {}) {
+  for (let i = 0; i < 2; i++) {
+    try {
+      const r = await fetch(url, { method, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (r.ok) return { st: 'ok', json: method === 'HEAD' ? null : await r.json().catch(() => null) };
+      if (noneStatus.includes(r.status)) return { st: 'none' };
+    } catch { /* 重試 */ }
+    if (i === 0) await new Promise(res => setTimeout(res, 300));
+  }
+  return { st: 'fail' };
+}
+/* 回傳 { venues: {okx,bitget,bybit}, failed: ['OKX','Bitget','Bybit'] }；failed 是這次沒查成功的交易所 */
 async function venuesOf(sym) {
   const [okx, bitget, bitgetStock] = await Promise.all([
-    okJson(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${sym}-USDT-SWAP`),
-    okJson(`https://api.bitget.com/api/v2/mix/market/ticker?symbol=${sym}USDT&productType=USDT-FUTURES`),
-    okJson(`https://api.bitget.com/api/v2/mix/market/ticker?symbol=${sym}STOCKUSDT&productType=USDT-FUTURES`)
+    probe(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${sym}-USDT-SWAP`),
+    probe(`https://api.bitget.com/api/v2/mix/market/ticker?symbol=${sym}USDT&productType=USDT-FUTURES`),
+    probe(`https://api.bitget.com/api/v2/mix/market/ticker?symbol=${sym}STOCKUSDT&productType=USDT-FUTURES`)
   ]);
-  const out = {};
-  if (okx?.data?.length) out.okx = `${sym}-USDT-SWAP`;
-  if (bitget?.data?.length) out.bitget = `${sym}USDT`; else if (bitgetStock?.data?.length) out.bitget = `${sym}STOCKUSDT`;
-  for (const s of [`${sym}STOCKUSDT`, `${sym}USDT`]) {
-    if (await exists(`https://public.bybit.com/trading/${s}/`)) { out.bybit = s; break; }
+  const out = {}, failed = [];
+  if (okx.st === 'ok' && okx.json?.data?.length) out.okx = `${sym}-USDT-SWAP`;
+  else if (okx.st === 'fail') failed.push('OKX');
+  if (bitget.st === 'ok' && bitget.json?.data?.length) out.bitget = `${sym}USDT`;
+  else if (bitgetStock.st === 'ok' && bitgetStock.json?.data?.length) out.bitget = `${sym}STOCKUSDT`;
+  else if (bitget.st === 'fail' || bitgetStock.st === 'fail') failed.push('Bitget');
+  /* Bybit 歷史檔案庫在 S3：沒有的代號是 404（有時 403） */
+  let byFail = false;
+  for (const x of [`${sym}STOCKUSDT`, `${sym}USDT`]) {
+    const r = await probe(`https://public.bybit.com/trading/${x}/`, { method: 'HEAD', noneStatus: [403, 404] });
+    if (r.st === 'ok') { out.bybit = x; byFail = false; break; }
+    if (r.st === 'fail') byFail = true;
   }
-  return out;
+  if (byFail) failed.push('Bybit');
+  return { venues: out, failed };
 }
 
 /* ---------- API ---------- */
@@ -257,7 +277,8 @@ async function api(req, env, url, ctx) {
   if (url.pathname === '/api/check' && req.method === 'GET') {
     const sym = normalizeSymbol(url.searchParams.get('s'));
     if (!sym) return json({ error: '代號格式不對' }, 400);
-    return json({ symbol: sym, venues: await venuesOf(sym) });
+    const r = await venuesOf(sym);
+    return json({ symbol: sym, venues: r.venues, failed: r.failed });
   }
   if (url.pathname === '/api/watch' && req.method === 'POST') {
     if (!env.ADMIN_PASSWORD) return json({ error: 'Worker 還沒設定 ADMIN_PASSWORD' }, 500);
@@ -268,8 +289,13 @@ async function api(req, env, url, ctx) {
     const issue = await watchIssue(env);
     let venues = null;
     if (action === 'add') {
-      venues = await venuesOf(sym);
-      if (!Object.keys(venues).length) return json({ error: `${sym} 在 OKX、Bitget、Bybit 都找不到永續合約` }, 404);
+      const r = await venuesOf(sym);
+      venues = r.venues;
+      if (!Object.keys(venues).length) {
+        /* 有交易所查詢失敗時，不能說「找不到合約」，請使用者稍後再試 */
+        if (r.failed.length) return json({ error: `${r.failed.join('、')} 檢查失敗，無法確認 ${sym} 有沒有永續合約，請稍後再試` }, 503);
+        return json({ error: `${sym} 在 OKX、Bitget、Bybit 都找不到永續合約` }, 404);
+      }
     }
     const body = editWatch(issue.body, action, sym);
     await gh(env, `/repos/${REPO}/issues/${issue.number}`, { method: 'PATCH', body: JSON.stringify({ body, state: 'open' }) });
@@ -1079,9 +1105,15 @@ function drawWatch(){
     d.querySelector('.sym').textContent=sym;d.querySelector('button').onclick=function(){change('remove',sym)};
     var au=D.watchAuto&&D.watchAuto[sym];if(au){var bg=document.createElement('span');bg.className='cat';bg.title='借幣利率飆高時自動加入；到期自動移出，期間再飆高會延長。按「加入」可改成手動（不再自動移出）';bg.textContent='借幣利率自動 '+tpe(au).slice(5,16)+' 移出';d.insertBefore(bg,d.querySelector('button'))}
     box.appendChild(d);
-    var put=function(v){var c=d.querySelector('.chips');c.className='chips';var ks=Object.keys(v);if(!ks.length){c.className='chips cat';c.textContent='三家都找不到合約';return}
-      c.innerHTML=ks.map(function(k){return '<a class="badge" target="_blank" rel="noopener" href="'+esc(tv(k,v[k],'60'))+'">'+VL[k]+'</a>'}).join('')};
-    if(VC[sym])put(VC[sym]);else fetch('/api/check?s='+encodeURIComponent(sym)).then(function(r){return r.json()}).then(function(j){VC[sym]=j.venues||{};put(VC[sym])}).catch(function(){});
+    /* 查詢失敗（網路錯誤、被擋、限流）和「確定沒有合約」要分開顯示；失敗不暫存，可點「重試」 */
+    var run;
+    var put=function(v,failed){var c=d.querySelector('.chips');c.className='chips';var ks=Object.keys(v);failed=failed||[];
+      var retry=failed.length?'<a class="badge" href="#" style="cursor:pointer" data-retry="1">'+failed.join('、')+' 檢查失敗，點此重試</a>':'';
+      if(!ks.length){if(failed.length){c.innerHTML=retry}else{c.className='chips cat';c.textContent='三家都找不到合約';return}}
+      else c.innerHTML=ks.map(function(k){return '<a class="badge" target="_blank" rel="noopener" href="'+esc(tv(k,v[k],'60'))+'">'+VL[k]+'</a>'}).join('')+retry;
+      var rb=c.querySelector('[data-retry]');if(rb)rb.onclick=function(e){e.preventDefault();c.className='chips cat';c.textContent='檢查中…';run()}};
+    run=function(){fetch('/api/check?s='+encodeURIComponent(sym)).then(function(r){return r.json()}).then(function(j){var f=j.failed||[];if(!f.length)VC[sym]=j.venues||{};put(j.venues||{},f)}).catch(function(){put({},['網路'])})};
+    if(VC[sym])put(VC[sym]);else run();
   })}
 function msg(t,c){var m=$('msg');if(m){m.textContent=t;m.className='msg '+(c||'')}}
 function change(action,symbol){
