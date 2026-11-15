@@ -24,3 +24,4 @@
 {"time":"2026-11-15T19:31+08:00","run":"43709353127","mode":"legacy","sent":"legacy","immediate":[],"deferred":[],"resonance":[],"digest":[],"pending":0}
 {"time":"2026-11-15T20:00+08:00","run":"43710898459","mode":"legacy","sent":"legacy","immediate":[{"k":"pre","chars":1533},{"k":"rate","chars":299},{"k":"events","chars":464}],"deferred":[{"k":"cross","chars":319}],"resonance":[{"base":"MEGA","early":["hourly","pre","hourly","pre"],"confirm":["cross"]}],"digest":[],"pending":1}
 {"time":"2026-11-15T21:00+08:00","run":"43715929077","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":645},{"k":"pre","chars":1760},{"k":"rate","chars":309}],"deferred":[],"resonance":[],"digest":[],"pending":1}
+{"time":"2026-11-15T22:00+08:00","run":"43721143530","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":244},{"k":"hourly","chars":573},{"k":"pre","chars":1749}],"deferred":[],"resonance":[],"digest":[],"pending":1}
