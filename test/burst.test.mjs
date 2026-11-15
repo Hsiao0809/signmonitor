@@ -58,7 +58,7 @@ test('盤中爆量：候選排第一、可略過排最後，文字有標記與�
   assert.equal(typeof al[0].bf7, 'number');
   const txt = hourlyAlertText(al, T);
   assert.match(txt, /\n【爆發候選】(?:【[^】]+】)?\u0001AAA\u0002/);   /* 後面可能接結構標記（shape.mjs） */
-  assert.match(txt, /\n【可略過】\u0001BBB\u0002/);
+  assert.match(txt, /\n【可略過】(?:【[^】]+】)?\u0001BBB\u0002/);
   assert.match(txt, /【爆發候選】＝/); assert.match(txt, /【可略過】＝/);
   assert.equal(burstRank(mergeByBase(al)[0]), 0);
 });
@@ -69,5 +69,5 @@ test('預警：可略過也照列、排在最後', () => {
   const b = { venue: 'okx', sym: 'Y', base: 'YYY', cat: 'crypto', stats: st(0.2, { o: 1, h: 1.06, l: 1, c: 1.05, qv: 1e6 }) };
   const added = pickPre(emptyPre(), [a, b], T);
   assert.deepEqual(added.map(p => [p.base, p.burst]), [['YYY', undefined], ['XXX', 'skip']]);
-  assert.match(preAlertText(added, T), /【可略過】\u0001XXX\u0002/);
+  assert.match(preAlertText(added, T), /【可略過】(?:【[^】]+】)?\u0001XXX\u0002/);
 });

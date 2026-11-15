@@ -299,7 +299,9 @@ export const SHAPES = [
   ['nb', '【窄幅突破】'], ['wb', '【突破前高】'], ['tr', '【續創高】'], ['cl', '【漲多再噴】'],
   ['sl', '【下掃收回】'], ['sh', '【上掃回落】'], ['bd', '【爆量跌破】'], ['pn', '【跌深再殺】']
 ].map(([m, label]) => [m, label, r => tg(r, label.slice(1, -1))]);
-SHAPES.push(['none', '區間內（沒有結構標記）', r => r.t >= SHAPE_T0 && !SHAPES.slice(0, 8).some(x => x[2](r))]);
+/* 區間內三種：標記後面有位置百分比（【區間下緣 22%】），用開頭比對 */
+for (const [m, name] of [['rl', '區間下緣'], ['rm', '區間中段'], ['rh', '區間上緣']]) SHAPES.push([m, `【${name}】`, r => (r.tg || []).some(t => t.startsWith(name))]);
+SHAPES.push(['none', '沒有結構標記（資料不足或 11-15 20:00 前後的舊格式）', r => r.t >= SHAPE_T0 && !SHAPES.slice(0, 11).some(x => x[2](r))]);
 
 export function summarize(recs, now) {
   const W = { '7': 7, '30': 30, all: Infinity };
