@@ -11,7 +11,10 @@
    |【突破前高】| 收盤站上前 7 天高點，其他情況 |
    |【跌深再殺】| 收盤跌破前 7 天低點，且前一根收盤比前 3 天最高已跌 ≥ 25% |
    |【爆量跌破】| 收盤跌破前 7 天低點，其他情況 |
-   收盤在前 7 天高低點之間的不標。
+   |【區間下緣 N%】| 收盤在前 7 天高低點之間，位置 ≤ 25%（N＝位置，0＝低點、100＝高點） |
+   |【區間中段 N%】| 位置 25%～75% |
+   |【區間上緣 N%】| 位置 ≥ 75% |
+   區間內這三種在回測裡沒有方向優勢，不放回測說明。
 
    回測（2026-07-23～11-12，Binance 現貨 177 檔 1H，成交額 ≥ 前 48h 中位數 5 倍的 5,215 筆，看之後 72 小時）：
    專案文件「行情分類-爆量訊號後72小時-2026-11-15」。回測的爆量定義與現貨資料跟這裡的訊號不完全相同，
@@ -31,6 +34,7 @@ export const SHAPE = {
   slope: 0.10, r2: 0.4,
   ran: 0.25,
   lowWick: 0.3, upWick: 0.4,
+  edge: 0.25,             /* 區間內：位置 ≤ 25% 算下緣、≥ 75% 算上緣 */
   hot: 10,                /* 這根 1H 漲幅 ≥ 這個 %：說明加「不追」 */
   regime: 0.03            /* BTC 7 天漲跌超過這個比例才算大盤偏強／偏弱（只用來決定要不要顯示某些說明） */
 };
@@ -90,13 +94,20 @@ export function shapeTag(sf, { partial = false, cfg = SHAPE, on = ON } = {}) {
     return sf.wid <= cfg.narrow ? 'nb' : 'wb';
   }
   if (sf.c < sf.lo) return sf.drop3 <= -cfg.ran ? 'pn' : 'bd';
-  return null;
+  /* 收在前 7 天高低點之間：依位置分下緣／中段／上緣 */
+  const p = posOf(sf);
+  if (p == null) return null;
+  return p <= cfg.edge ? 'rl' : p >= 1 - cfg.edge ? 'rh' : 'rm';
 }
+/** 收盤在前 7 天高低點之間的位置（0＝低點、1＝高點）；高低點相同回傳 null */
+export const posOf = sf => (sf && sf.hi > sf.lo ? Math.min(1, Math.max(0, (sf.c - sf.lo) / (sf.hi - sf.lo))) : null);
+const RANGE = new Set(['rl', 'rm', 'rh']);
 
-export const SHAPE_NAME = { sl: '下掃收回', sh: '上掃回落', cl: '漲多再噴', tr: '續創高', nb: '窄幅突破', wb: '突破前高', pn: '跌深再殺', bd: '爆量跌破' };
-export const shapeLabel = a => (a.shape && SHAPE_NAME[a.shape] ? `【${SHAPE_NAME[a.shape]}】` : '');
-/** 存進狀態用：前 7 天高、低（網頁提示用） */
-export const sfOut = sf => sf ? { shi: sf.hi, slo: sf.lo } : {};
+export const SHAPE_NAME = { sl: '下掃收回', sh: '上掃回落', cl: '漲多再噴', tr: '續創高', nb: '窄幅突破', wb: '突破前高', pn: '跌深再殺', bd: '爆量跌破', rl: '區間下緣', rm: '區間中段', rh: '區間上緣' };
+/* 區間內的三種後面接位置百分比，例如【區間下緣 22%】 */
+export const shapeLabel = a => (a.shape && SHAPE_NAME[a.shape] ? `【${SHAPE_NAME[a.shape]}${RANGE.has(a.shape) && a.spos != null ? ` ${a.spos}%` : ''}】` : '');
+/** 存進狀態用：前 7 天高、低、收盤在區間的位置 %（訊息與網頁用） */
+export const sfOut = sf => { if (!sf) return {}; const p = posOf(sf); return { shi: sf.hi, slo: sf.lo, ...(p == null ? {} : { spos: Math.round(p * 100) }) }; };
 
 /** 大盤狀態：BTC 收盤比 7 天前（取 entries 裡 BTC 的爆發特徵）。只用來決定說明要不要出現，不顯示在訊息裡 */
 export function regimeOf(entries, cfg = SHAPE) {

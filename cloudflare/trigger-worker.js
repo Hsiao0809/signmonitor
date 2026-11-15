@@ -566,10 +566,10 @@ function hW(a){return a.watch||inWatch(a.base)}
 function BT(a){var t='這根振幅 '+(a.bfr==null?'—':a.bfr+'%')+'｜7 天漲 '+(a.bf7==null?'—':a.bf7+'%')+'｜7 天高低差 '+(a.bfg==null?'—':a.bfg+'%');
   return a.burst==='cand'?'<span class="badge bl" title="爆發候選：爆量 ≥20x、這根振幅 ≥13%、7 天已漲 ≥50%；回測約 3 成之後 24h 內漲 ≥30%，多數會先跌 8% 以上｜'+t+'">爆發候選</span>':a.burst==='skip'?'<span class="cat" title="可略過：前 7 天高低差 <28% 或這根振幅 <4%；回測約 1% 爆發｜'+t+'">可略過</span>':''}
 /* 結構標記（src/shape.mjs）：這根 1H 相對前 7 天高低點的位置 */
-var SHN={sl:'下掃收回',sh:'上掃回落',cl:'漲多再噴',tr:'續創高',nb:'窄幅突破',wb:'突破前高',pn:'跌深再殺',bd:'爆量跌破'};
-var SHD={sl:'最低跌破前 7 天低點後收回',sh:'最高突破前 7 天高點後收回高點之下',cl:'站上前 7 天高點，且前 3 天已漲 ≥25%',tr:'上升趨勢中站上前 7 天高點',nb:'前 7 天高低差 ≤15%，站上高點',wb:'站上前 7 天高點',pn:'跌破前 7 天低點，且前 3 天已跌 ≥25%',bd:'跌破前 7 天低點'};
+var SHN={sl:'下掃收回',sh:'上掃回落',cl:'漲多再噴',tr:'續創高',nb:'窄幅突破',wb:'突破前高',pn:'跌深再殺',bd:'爆量跌破',rl:'區間下緣',rm:'區間中段',rh:'區間上緣'};
+var SHD={sl:'最低跌破前 7 天低點後收回',sh:'最高突破前 7 天高點後收回高點之下',cl:'站上前 7 天高點，且前 3 天已漲 ≥25%',tr:'上升趨勢中站上前 7 天高點',nb:'前 7 天高低差 ≤15%，站上高點',wb:'站上前 7 天高點',pn:'跌破前 7 天低點，且前 3 天已跌 ≥25%',bd:'跌破前 7 天低點',rl:'收在前 7 天高低點之間，位置 ≤25%',rm:'收在前 7 天高低點之間，位置 25%～75%',rh:'收在前 7 天高低點之間，位置 ≥75%'};
 function ST(a){if(!a.shape||!SHN[a.shape])return '';var up=a.shape==='sl'||a.shape==='nb'||a.shape==='wb'||a.shape==='tr',dn=a.shape==='bd'||a.shape==='pn';
-  return '<span class="badge'+(up?' bl':dn?' bs':'')+'" title="'+SHD[a.shape]+'｜前 7 天高 '+(a.shi==null?'—':a.shi)+'、低 '+(a.slo==null?'—':a.slo)+'">'+SHN[a.shape]+'</span>'}
+  return '<span class="badge'+(up?' bl':dn?' bs':'')+'" title="'+SHD[a.shape]+'｜前 7 天高 '+(a.shi==null?'—':a.shi)+'、低 '+(a.slo==null?'—':a.slo)+'">'+SHN[a.shape]+((a.shape==='rl'||a.shape==='rm'||a.shape==='rh')&&a.spos!=null?' '+a.spos+'%':'')+'</span>'}
 /* 盤中爆量的附加標記：連續放量、時段性、盤中推算已通知、幾小時前預警 */
 function RT(a){return (a.ramp?'<span class="badge" title="連續 4 根逐根放大，3 根累積 '+a.cx+'x 近48h">連續放量</span>':'')+(a.season?'<span class="cat" title="這幾個小時平常每天也會放量">時段性</span>':'')+
   (a.earlyMin?'<span class="cat" title="第 '+a.earlyMin+' 分盤中推算已通知">推算:'+a.earlyMin+'</span>':'')+(a.preH?'<span class="cat" title="'+a.preH+' 小時前已預警">預警 '+a.preH+'h前</span>':'')}
