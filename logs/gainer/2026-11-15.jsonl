@@ -1,2 +1,3 @@
 {"t":1794682800000,"k":"gold","b":"EVAA","key":"EVAA","tfs":["1h"],"c":1.7026,"brk":1.7425,"peak":2.0361,"avoid":1,"tags":["spike","wide"],"src":["bitget","EVAAUSDT"]}
 {"t":1794718800000,"k":"gold","b":"SOPH","key":"SOPH","tfs":["4h"],"c":0.001863,"brk":0.002076,"peak":0.002614,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","SOPH-USDT-SWAP"]}
+{"t":1794747600000,"k":"gold","b":"INIT","key":"INIT","tfs":["1h"],"c":0.12416,"brk":0.12827,"peak":0.14108,"avoid":1,"tags":["spike","wide"],"src":["okx","INIT-USDT-SWAP"]}
