@@ -57,7 +57,7 @@ test('盤中爆量：候選排第一、可略過排最後，文字有標記與�
   assert.equal(al[0].burst, 'cand'); assert.equal(al[2].burst, 'skip'); assert.equal(al[1].burst, undefined);
   assert.equal(typeof al[0].bf7, 'number');
   const txt = hourlyAlertText(al, T);
-  assert.match(txt, /\n【爆發候選】\u0001AAA\u0002/);
+  assert.match(txt, /\n【爆發候選】(?:【[^】]+】)?\u0001AAA\u0002/);   /* 後面可能接結構標記（shape.mjs） */
   assert.match(txt, /\n【可略過】\u0001BBB\u0002/);
   assert.match(txt, /【爆發候選】＝/); assert.match(txt, /【可略過】＝/);
   assert.equal(burstRank(mergeByBase(al)[0]), 0);

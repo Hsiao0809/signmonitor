@@ -14,6 +14,7 @@ import { nthTag } from './tag.mjs';
 import zlib from 'node:zlib';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
 import { burstFeat, burstTag, burstRank, burstLabel, bfOut, BURST_NOTE } from './burst.mjs';
+import { shapeFeat, shapeTag, shapeLabel, sfOut, regimeOf, shapeNotes } from './shape.mjs';
 
 export const HOURLY = {
   minSameHourX: 5,
@@ -103,7 +104,8 @@ export function hourStats(bars, T, cat, cfg = HOURLY) {
     x1: cur.qv / Math.max(med, floor), x2: cur.qv / Math.max(mean, floor),
     qv: cur.qv, chg: cur.o > 0 ? cur.c / cur.o - 1 : 0, price: cur.c,
     rng: avgRangePct(bars, T),         /* 近 7 天平均 1H 振幅 %（量增價平用；Bybit 沒有歷史高低為 null） */
-    bf: burstFeat(m, T)                /* 爆發標記用：這根振幅、7 天漲幅、7 天高低差（burst.mjs） */
+    bf: burstFeat(m, T),               /* 爆發標記用：這根振幅、7 天漲幅、7 天高低差（burst.mjs） */
+    sf: shapeFeat(m, T)                /* 結構標記用：相對前 7 天高低點的位置（shape.mjs） */
   };
 }
 
@@ -146,6 +148,7 @@ export const groupByBase = entries => {
 export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
   const byBase = groupByBase(entries);
   const alerts = [];
+  const regime = regimeOf(entries);          /* 結構說明用（shape.mjs），不顯示 */
   for (const e of entries) {
     const spike = isAnomaly(e.stats, e.cat, cfg, !!e.watch);
     const ramp = isRamp(e.stats, e.cat, cfg, !!e.watch);
@@ -162,10 +165,12 @@ export function pickAlerts(state, entries, T, cfg = HOURLY, ctx = {}) {
     const preT = pre == null ? null : typeof pre === 'number' ? pre : pre.t;
     const prePx = pre && typeof pre === 'object' && pre.price ? pre.price : null;
     const burst = burstTag({ cat: e.cat, watch: !!e.watch, x1: e.stats.x1, bf: e.stats.bf });
+    const shape = shapeTag(e.stats.sf);
     alerts.push({
       t: T, venue: e.venue, sym: e.sym, base: e.base, cat: e.cat,
       x1: +e.stats.x1.toFixed(1), x2: +e.stats.x2.toFixed(1), qv: Math.round(e.stats.qv), chg: +(e.stats.chg * 100).toFixed(2),
       price: e.stats.price, watch: !!e.watch, closed: weekendClosed(T, e.cat),
+      ...(shape ? { shape, ...sfOut(e.stats.sf), ...(regime ? { rg: regime } : {}) } : {}),
       ...crossVenue(e, byBase, cfg),
       ...(ramp ? { ramp: true, cx: +e.stats.cx.toFixed(1), ...(e.stats.cxs != null && e.stats.cxs < cfg.ramp.cumX && e.stats.x1 < cfg.pre.sameX ? { season: true } : {}) } : {}),
       ...(spike ? {} : { rampOnly: true }),
@@ -205,7 +210,7 @@ export const alink = a => link(a.base, tvUrl(a.venue, a.sym, '60'));
 export { VL, CAT };
 /* 標籤：【連續放量】、盤中推算已通知、幾小時前預警 */
 export function tagsOf(a) {
-  return `${burstLabel(a)}${a.quiet ? '【量增價平】' : ''}${a.watch ? '【自選】' : ''}${a.ramp ? '【連續放量】' : ''}${a.season ? '【時段性】' : ''}${a.closed ? '【週末休市】' : ''}`;
+  return `${burstLabel(a)}${shapeLabel(a)}${a.quiet ? '【量增價平】' : ''}${a.watch ? '【自選】' : ''}${a.ramp ? '【連續放量】' : ''}${a.season ? '【時段性】' : ''}${a.closed ? '【週末休市】' : ''}`;
 }
 export function noteOf(a) {
   const n = [];
@@ -241,6 +246,7 @@ export function hourlyAlertText(alerts, T, warnings = [], url = '', cfg = HOURLY
   });
   if (alerts.some(a => a.burst === 'cand')) L.push(BURST_NOTE.cand);
   if (alerts.slice(0, cfg.maxLines).some(a => a.burst === 'skip')) L.push(BURST_NOTE.skip);
+  { const shown = alerts.slice(0, cfg.maxLines); L.push(...shapeNotes(shown, (shown.find(a => a.rg) || {}).rg || null)); }
   if (alerts.some(a => a.closed)) L.push('【週末休市】＝標的現貨市場休市中，成交多半集中在少數交易所，訊號可靠度較低');
   if (alerts.some(a => a.rampOnly)) L.push('【連續放量】＝每根都沒到爆量門檻，但連續放大、累積量已大');
   if (alerts.some(a => a.season)) L.push('【時段性】＝這幾個小時平常每天也會放量（累積量、當根都未達同時段 2 倍），可靠度較低');

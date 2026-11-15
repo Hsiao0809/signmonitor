@@ -293,6 +293,14 @@ export const MARKS = [
   ['skip', '【可略過】', r => tg(r, '可略過')]
 ];
 
+/* 結構標記（src/shape.mjs，2026-11-15 起才有）：盤中爆量／推算／預警，依標記分組；none＝上線後沒有標記的（收在前 7 天高低點之間） */
+const SHAPE_T0 = Date.UTC(2026, 10, 15, 12);
+export const SHAPES = [
+  ['nb', '【窄幅突破】'], ['wb', '【突破前高】'], ['tr', '【續創高】'], ['cl', '【漲多再噴】'],
+  ['sl', '【下掃收回】'], ['sh', '【上掃回落】'], ['bd', '【爆量跌破】'], ['pn', '【跌深再殺】']
+].map(([m, label]) => [m, label, r => tg(r, label.slice(1, -1))]);
+SHAPES.push(['none', '區間內（沒有結構標記）', r => r.t >= SHAPE_T0 && !SHAPES.slice(0, 8).some(x => x[2](r))]);
+
 export function summarize(recs, now) {
   const W = { '7': 7, '30': 30, all: Infinity };
   const win = {};
@@ -321,7 +329,16 @@ export function summarize(recs, now) {
       const g = cr.filter(fn);
       return { m, label, h: Object.fromEntries(HZ.map(h => [h, stat(g, h)])) };
     }).filter(x => HZ.some(h => x.h[h].n));
-    win[key] = { n: rs.length, kinds, feats, marks };
+    const shapes = [];
+    for (const c of ['加密', '股票', '商品']) {
+      const g0 = rs.filter(r => r.c === c && (r.k === 'hourly' || r.k === 'est' || r.k === 'pre'));
+      for (const [m, label, fn] of SHAPES) {
+        const g = g0.filter(fn);
+        const h = Object.fromEntries(HZ.map(hh => [hh, stat(g, hh)]));
+        if (HZ.some(hh => h[hh].n)) shapes.push({ m, c, label, h });
+      }
+    }
+    win[key] = { n: rs.length, kinds, feats, marks, shapes };
   }
   const recent = recs.filter(r => r.m && r.m[4]).sort((a, b) => b.t - a.t).slice(0, 120).map(r => ({
     k: r.k, b: r.b, c: r.c, t: r.t, v: (r.v || [])[0] || null, x: r.x ?? r.xs ?? null, ch: r.ch ?? null, tg: (r.tg || []).filter(x => x !== '自選').slice(0, 3), w: (r.tg || []).includes('自選') ? 1 : 0,
@@ -363,6 +380,11 @@ export function renderMd(sum) {
   if (w.marks && w.marks.length) {
     L.push('## 爆發標記（加密，持有 24 小時；2026-11-13 起）', '', '| 標記 | 筆數 | 爆發率（曾漲≥30%） | 平均 | 勝率 | 期間最大不利 |', '|---|---:|---:|---:|---:|---:|');
     for (const x of w.marks) { const t = x.h[24]; if (t.n) L.push(`| ${x.label} | ${t.n} | ${t.b30}% | ${pct(t.avg)} | ${t.win}% | ${pct(t.dn)} |`); }
+    L.push('');
+  }
+  if (w.shapes && w.shapes.length) {
+    L.push('## 結構標記（盤中爆量／推算／預警，持有 72 小時；2026-11-15 起）', '', '| 類別 | 標記 | 筆數 | 平均 | 勝率 | 期間最大有利 | 期間最大不利 |', '|---|---|---:|---:|---:|---:|---:|');
+    for (const x of w.shapes) { const t = x.h[72]; if (t.n) L.push(`| ${x.c} | ${x.label} | ${t.n} | ${pct(t.avg)} | ${t.win}% | ${pct(t.up)} | ${pct(t.dn)} |`); }
     L.push('');
   }
   L.push('## 盤中爆量細分（全部期間，24 小時：有這個條件／沒有）', '', '| 類別 | 條件 | 有：筆數 | 有：超額 | 有：反向做空 | 沒有：筆數 | 沒有：超額 |', '|---|---|---:|---:|---:|---:|---:|');
