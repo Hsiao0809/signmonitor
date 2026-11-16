@@ -3,3 +3,4 @@
 {"t":1794801600000,"k":"gnew","b":"EVAA","key":"EVAA","tfs":["1h"],"c":2.5925,"brk":2.6087,"peak":2.8962,"avoid":1,"tags":["spike","wide"],"src":["bitget","EVAAUSDT"]}
 {"t":1794801600000,"k":"gold","b":"EVAA","key":"EVAA","tfs":["1h"],"c":2.5925,"brk":2.6087,"peak":2.8962,"avoid":1,"tags":["spike","wide"],"src":["bitget","EVAAUSDT"]}
 {"t":1794801600000,"k":"gold","b":"RARE","key":"RARE","tfs":["4h"],"c":0.01194,"brk":0.0121,"peak":0.01568,"avoid":1,"tags":["spike","wide"],"src":["bitget","RAREUSDT"]}
+{"t":1794841200000,"k":"gold","b":"RARE","key":"RARE","tfs":["1h"],"c":0.01517,"brk":0.01535,"peak":0.01805,"avoid":1,"tags":["spike","wide"],"src":["bitget","RAREUSDT"]}
