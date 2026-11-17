@@ -3,3 +3,5 @@
 {"t":1794859200000,"k":"gold","b":"BLESS","key":"BLESS","tfs":["1h"],"c":0.017557,"brk":0.018068,"peak":0.019726,"avoid":1,"tags":["spike","wide"],"src":["bitget","BLESSUSDT"]}
 {"t":1794877200000,"k":"gnew","b":"HUMA","key":"HUMA","tfs":["1h"],"c":0.009381,"brk":0.009558,"peak":0.010376,"avoid":1,"tags":["spike","wide"],"src":["okx","HUMA-USDT-SWAP"]}
 {"t":1794877200000,"k":"gold","b":"HUMA","key":"HUMA","tfs":["1h"],"c":0.009381,"brk":0.009624,"peak":0.010376,"avoid":1,"tags":["spike","wide"],"src":["okx","HUMA-USDT-SWAP"]}
+{"t":1794888000000,"k":"gnew","b":"BLESS","key":"BLESS","tfs":["4h"],"c":0.012084,"brk":0.017332,"peak":0.019726,"avoid":1,"tags":["spike","wide"],"src":["bitget","BLESSUSDT"]}
+{"t":1794888000000,"k":"gold","b":"BLESS","key":"BLESS","tfs":["4h"],"c":0.012084,"brk":0.017332,"peak":0.019726,"avoid":1,"tags":["spike","wide"],"src":["bitget","BLESSUSDT"]}
