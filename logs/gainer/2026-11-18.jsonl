@@ -2,3 +2,5 @@
 {"t":1794999600000,"k":"gnew","b":"BREV","key":"BREV","tfs":["1h"],"c":0.09216,"brk":0.09266,"peak":0.13563,"avoid":1,"tags":["spike","wide"],"src":["okx","BREV-USDT-SWAP"]}
 {"t":1795003200000,"k":"gnew","b":"BREV","key":"BREV","tfs":["4h"],"c":0.08823,"brk":0.09624,"peak":0.13563,"avoid":1,"tags":["spike","wide"],"src":["okx","BREV-USDT-SWAP"]}
 {"t":1795003200000,"k":"gold","b":"BREV","key":"BREV","tfs":["4h"],"c":0.08823,"brk":0.09624,"peak":0.13563,"avoid":1,"tags":["spike","wide"],"src":["okx","BREV-USDT-SWAP"]}
+{"t":1795006800000,"k":"gnew","b":"PIPPIN","key":"PIPPIN","tfs":["1h"],"c":0.01892,"brk":0.01902,"peak":0.02197,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","PIPPIN-USDT-SWAP"]}
+{"t":1795006800000,"k":"gold","b":"PIPPIN","key":"PIPPIN","tfs":["1h"],"c":0.01892,"brk":0.01902,"peak":0.02197,"avoid":1,"tags":["spike","wake","wide"],"src":["okx","PIPPIN-USDT-SWAP"]}
