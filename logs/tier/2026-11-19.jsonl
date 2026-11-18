@@ -2,3 +2,4 @@
 {"time":"2026-11-19T01:00+08:00","run":"44351961533","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":798},{"k":"hourly","chars":2486},{"k":"pre","chars":1671}],"deferred":[],"resonance":[],"digest":[],"pending":1}
 {"time":"2026-11-19T02:00+08:00","run":"44363198430","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":246},{"k":"hourly","chars":1151},{"k":"pre","chars":1721}],"deferred":[],"resonance":[],"digest":[],"pending":1}
 {"time":"2026-11-19T03:00+08:00","run":"44374147160","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":312},{"k":"pre","chars":1725}],"deferred":[],"resonance":[],"digest":[],"pending":1}
+{"time":"2026-11-19T04:00+08:00","run":"44384689379","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":278},{"k":"pre","chars":1724},{"k":"dormant","chars":359}],"deferred":[],"resonance":[],"digest":[],"pending":1}
