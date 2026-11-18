@@ -5,3 +5,4 @@
 {"time":"2026-11-19T04:00+08:00","run":"44384689379","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":278},{"k":"pre","chars":1724},{"k":"dormant","chars":359}],"deferred":[],"resonance":[],"digest":[],"pending":1}
 {"time":"2026-11-19T05:00+08:00","run":"44395308803","mode":"legacy","sent":"legacy","immediate":[{"k":"hourly","chars":492},{"k":"pre","chars":1687}],"deferred":[],"resonance":[],"digest":[],"pending":1}
 {"time":"2026-11-19T05:37+08:00","run":"44403287857","mode":"legacy","sent":"legacy","immediate":[],"deferred":[],"resonance":[],"digest":[],"pending":1}
+{"time":"2026-11-19T06:00+08:00","run":"44405681467","mode":"legacy","sent":"legacy","immediate":[{"k":"quiet","chars":240},{"k":"hourly","chars":1191},{"k":"pre","chars":1737}],"deferred":[],"resonance":[],"digest":[],"pending":1}
