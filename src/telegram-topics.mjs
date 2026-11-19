@@ -23,6 +23,12 @@ export const TOPICS = {
 export const TOPICS_FILE = 'config/telegram-topics.json';
 
 export const fileName = (n, key) => `telegram-${n}-${key}.txt`;
+/* 分級層設成 C（不推）的訊息：不發 Telegram，只由 notify.mjs 記進發送紀錄（muted:true），訊號成績照樣能統計 */
+export const mutedName = (n, key) => `muted-${n}-${key}.txt`;
+export function parseMutedName(f) {
+  const m = /^muted-(\d+)-([a-z]+)\.txt$/.exec(f);
+  return m ? { n: +m[1], key: m[2] } : null;
+}
 /* telegram-3-cross.txt → { n: 3, key: 'cross' }；舊格式 telegram-3.txt → key 為 null（送 General） */
 export function parseFileName(f) {
   const m = /^telegram-(\d+)(?:-([a-z]+))?\.txt$/.exec(f);

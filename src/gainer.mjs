@@ -13,6 +13,7 @@
    轉弱同一檔：1H 12 小時、4H 24 小時只通知一次，同一根 K 不重複。
    沒有回測，只當觀察。
    ============================================================ */
+import { cardLine } from './risk.mjs';
 import zlib from 'node:zlib';
 import { nthTag } from './tag.mjs';
 import { tpe, fmtP, link, tvUrl } from './tracker.mjs';
@@ -242,7 +243,8 @@ export function tvOf(x) {
 const exText = ex => Object.entries(ex || {}).map(([v, c]) => `${LABEL[v] || v} ${pcs(typeof c === 'object' ? c.chg : c)}`).join('／');
 const tagText = tags => (tags || []).map(t => TAGS[t]).filter(Boolean);
 
-export function gainerAlertText(events, T, url = '', cfg = GAINER, nth = null) {
+/** opts.risk：config/risk.json（null＝不加下單卡）。停損用 24h 高點 */
+export function gainerAlertText(events, T, url = '', cfg = GAINER, nth = null, opts = {}) {
   if (!events.length) return '';
   /* 每檔一個段落（空行隔開）：run.mjs 依空行切段，過長時從段落之間切開，不會把連結標記切斷 */
   const blocks = [`【做空候選・轉弱】${tpe(T).slice(5, 10)} ${hhmm(T)} 台灣時間（${events.length} 檔）`];
@@ -251,6 +253,7 @@ export function gainerAlertText(events, T, url = '', cfg = GAINER, nth = null) {
     L.push(`  收 ${fmtP(e.c)} 跌破${e.rule === 'range' ? '高點後回檔低點' : '前一根低'} ${fmtP(e.brk)}｜自高點回落 ${e.drop}%｜停損（24h 高）${e.hi24 ? fmtP(e.hi24) : '—'}${e.stop != null ? `（距現價 ${e.stop}%）` : ''}`);
     const tg = tagText(e.tags);
     if (tg.length) L.push(`  ${isAvoid(e.tags) ? '⚠ ' : ''}${tg.join('；')}`);
+    if (opts.risk && e.hi24) { const c = cardLine(-1, e.c, e.hi24, opts.risk); if (c) L.push(c); }
     blocks.push(L.join('\n'));
   });
   const foot = [];

@@ -52,7 +52,7 @@ function chunk(text, limit) {
 
 /* 紀錄 → 要發的訊息（依原本發送時間排序）。records：logs 的每一行（已解析）。 */
 export function plan(records, { sinceMs, cutoffMs = Infinity }) {
-  const rs = records.filter(r => r.ok && r.text && Date.parse(r.time) >= sinceMs && Date.parse(r.time) < cutoffMs)
+  const rs = records.filter(r => r.ok && !r.muted && r.text && Date.parse(r.time) >= sinceMs && Date.parse(r.time) < cutoffMs)
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time) || String(a.part).localeCompare(String(b.part), 'en', { numeric: true }));
   const sends = []; let prevRun = null, prevLast = null;
   for (const r of rs) {

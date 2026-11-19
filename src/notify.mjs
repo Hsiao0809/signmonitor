@@ -13,7 +13,7 @@
    找不到、讀寫失敗、被 Telegram 拒絕，一律當作沒有這個功能照常發送，不影響推播。 */
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseFileName, loadTopics } from './telegram-topics.mjs';
+import { parseFileName, parseMutedName, loadTopics } from './telegram-topics.mjs';
 import { marksOf, replaceMarks, stripMarks } from './tag.mjs';
 
 const dir = process.argv[2] || 'out';
@@ -104,12 +104,12 @@ function resolvePrev(text, key, thread, ids, now) {
   return { text: out, bases, reply: one && (one.th || 0) === (thread || 0) ? one.id : null };
 }
 const logDir = process.env.TELEGRAM_LOG_DIR || 'logs/telegram';
-function record(f, key, text, r) {
+function record(f, key, text, r, muted = false) {
   const now = new Date();
   const tw = now.toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false });
   const line = JSON.stringify({
     time: tw.replace(' ', 'T') + '+08:00', run: process.env.GITHUB_RUN_ID || null,
-    part: f, ...(key ? { topic: key } : {}), ok: r.ok, ...(r.fellBack ? { fellBack: true } : {}),
+    part: f, ...(key ? { topic: key } : {}), ok: r.ok, ...(muted ? { muted: true } : {}), ...(r.fellBack ? { fellBack: true } : {}),
     ...(r.tries ? { retries: r.tries } : {}),
     ...(r.ok && r.id ? { msgId: r.id } : {}), ...(r.replied ? { replyTo: r.replyTo } : {}),
     ...(r.ok ? {} : { error: (r.status ? `HTTP ${r.status} ${r.desc}` : r.desc).trim() }), text: toPlain(text)
@@ -140,4 +140,11 @@ for (const { f, key } of files) {
   if (!r.ok) { failed++; console.error(`Telegram 發送失敗（${f}，${r.status ? `HTTP ${r.status}` : '連線'}）：${r.desc}`); continue; }
   console.log(`已發送 ${f}${r.tries ? `（重試 ${r.tries} 次後成功）` : ''}`);
 }
+/* 不推的訊息（分級層 C、盤中推算關閉）：不發送，只記一行 muted:true，給訊號成績統計用 */
+const mutedFiles = fs.existsSync(dir) ? fs.readdirSync(dir).map(f => ({ f, ...parseMutedName(f) })).filter(x => x.n != null).sort((a, b) => a.n - b.n) : [];
+for (const { f, key } of mutedFiles) {
+  const raw = fs.readFileSync(path.join(dir, f), 'utf8');
+  if (raw.trim()) record(f, key, stripMarks(raw), { ok: true }, true);
+}
+if (mutedFiles.length) console.log(`不推播、只記錄 ${mutedFiles.length} 則（${[...new Set(mutedFiles.map(x => x.key))].join('、')}）`);
 if (failed) { console.error(`本輪有 ${failed} 則沒發出去，其餘已照常發送；失敗的內容在 logs/telegram 的發送紀錄（ok:false）`); process.exit(1); }
