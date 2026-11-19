@@ -377,3 +377,19 @@ test('setup-topics：群組沒開話題、或沒有建立權限時，清楚失�
   assert.match(r.err, /管理話題/);
   assert.deepEqual(JSON.parse(fs.readFileSync(f, 'utf8')), { quiet: 501, hourly: 502 });   /* 已建立的保留，下次補建 */
 });
+
+test('notify：muted 檔不發送，只記一行 muted:true（訊號成績照樣讀得到）；補發會略過', async () => {
+  const { server, calls, url } = await fakeTelegram(() => ({ ok: true }));
+  const out = tmp(), logs = tmp();
+  fs.writeFileSync(path.join(out, 'telegram-1-cross.txt'), '金叉訊息');
+  fs.writeFileSync(path.join(out, 'muted-1-pre.txt'), `預警 <a href="https://x.test">MEGA</a>${M("MEGA")}`);
+  const r = await run('src/notify.mjs', [out], { TELEGRAM_API: url, TELEGRAM_TOPICS: '{}', TELEGRAM_LOG_DIR: logs, GITHUB_RUN_ID: '7' });
+  server.close();
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(calls.map(c => c.body.text), ['金叉訊息']);
+  const lines = fs.readdirSync(logs).flatMap(f => fs.readFileSync(path.join(logs, f), 'utf8').trim().split('\n').map(l => JSON.parse(l)));
+  assert.deepEqual(lines.map(l => [l.topic, !!l.muted, l.ok]), [['cross', false, true], ['pre', true, true]]);
+  assert.equal(lines[1].text, '預警 MEGA');
+  assert.deepEqual(TT.parseMutedName('muted-3-quiet.txt'), { n: 3, key: 'quiet' });
+  assert.equal(TT.parseFileName('muted-3-quiet.txt'), null);
+});

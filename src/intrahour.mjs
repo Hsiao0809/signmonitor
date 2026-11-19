@@ -5,7 +5,7 @@
    OKX、Bitget 進行中的 1H K：已成交量換算整根量，達正式爆量門檻就推播。
    只寫「盤中預警」Issue；「盤中爆量」Issue 只讀（取正式爆量的去重紀錄）。
    ============================================================ */
-import { fileName } from './telegram-topics.mjs';
+import { fileName, mutedName } from './telegram-topics.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as V from './venues.mjs';
@@ -58,10 +58,13 @@ async function main() {
   const note = `最近一次盤中推算：${tpe(T)}–${tpe(T + H).slice(11)} 台灣時間這根 1H K 第 ${minute} 分；OKX ${cnt('okx')} 檔、Bitget ${cnt('bitget')} 檔，本輪 ${alerts.length} 檔`;
   fs.writeFileSync(path.join(outDir, 'pre-body.md'), E.preBody(pstate, { nowMs, warnings, note }, t => render(t, 'md')));
   const pushed = alerts.filter(x => !x.moved);
-  const TG = TR.tagger(nowMs, { nth: false });   /* 盤中推算不計「今日第 N 次」，只標「上次」 */
+  /* intrahourPush=false（只在 tiered 模式生效）：不發 Telegram，寫成 muted 檔，notify.mjs 只記錄給訊號成績用 */
+  const tcfg = TR.loadConfig();
+  const mute = tcfg.mode === 'tiered' && tcfg.intrahourPush === false;
+  const TG = mute ? null : TR.tagger(nowMs, { nth: false });   /* 盤中推算不計「今日第 N 次」，只標「上次」 */
   const msg = E.earlyAlertText([...HR.mergeByBase(pushed), ...alerts.filter(x => x.moved)], T, minute, a['pre-url'] || '', undefined, TG ? TG('pre') : null);
-  if (msg) fs.writeFileSync(path.join(outDir, fileName(1, 'pre')), render(msg, 'html'));
-  console.log(`intrahour=${tpe(T)}+${minute}m entries=${entries.length} alerts=${alerts.length} pushed=${pushed.length}`);
+  if (msg) fs.writeFileSync(path.join(outDir, mute ? mutedName(1, 'pre') : fileName(1, 'pre')), render(msg, 'html'));
+  console.log(`intrahour=${tpe(T)}+${minute}m entries=${entries.length} alerts=${alerts.length} pushed=${mute ? 0 : pushed.length}${mute ? '（intrahourPush=false，只記錄）' : ''}`);
   warnings.forEach(w => console.log('warning:', w));
 }
 

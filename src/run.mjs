@@ -29,9 +29,10 @@ import * as GNS from './gainer-scan.mjs';
 import { parseWatch, applyAuto, AUTO_DAYS } from './watch.mjs';
 import * as CR from './cross.mjs';
 import * as CS from './cross-scan.mjs';
-import { groupByTopic, fileName } from './telegram-topics.mjs';
+import { groupByTopic, fileName, mutedName } from './telegram-topics.mjs';
 import * as TR from './tier.mjs';
 import * as SN from './snapshot.mjs';
+import { loadRisk } from './risk.mjs';
 import * as Q from './quiet.mjs';
 import { getJSON } from './venues.mjs';
 import * as SW from './sweep.mjs';
@@ -429,11 +430,13 @@ async function main() {
   if (dmsg) msgs.push({ k: 'dormant', text: dmsg });
   const rmsg = RT.rateAlertText(rspikes, rHour, a['rate-url'] || '', RT.RATE, rauto, AUTO_DAYS, nk('rate'));
   if (rmsg) msgs.push({ k: 'rate', text: rmsg });
-  const gmsg = GN.gainerAlertText(gevents, gHour, a['gainer-url'] || '', undefined, nk('gainer'));
+  const risk = loadRisk();                                    /* 下單卡（config/risk.json）；讀不到就不加 */
+  const btc = snap?.market?.find(m => m.base === 'BTC') || null;
+  const gmsg = GN.gainerAlertText(gevents, gHour, a['gainer-url'] || '', undefined, nk('gainer'), { risk });
   if (gmsg) msgs.push({ k: 'gainer', text: gmsg });
-  if (cross?.newA?.length) msgs.push({ k: 'cross', text: CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || '', undefined, nk('cross')) });
+  if (cross?.newA?.length) msgs.push({ k: 'cross', text: CR.crossAlertText(cross.newA, cross.newB, cross.latestT, a['cross-url'] || '', undefined, nk('cross'), { risk, btc }) });
   if (cross?.failed) msgs.push({ k: 'alert', text: `訊號掃描台｜金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${cross.failed}\n下一個整點自動重試；同一根 4H K 只通知一次` });
-  if (crossD?.newA?.length) msgs.push({ k: 'crossd', text: CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D, nk('crossd')) });
+  if (crossD?.newA?.length) msgs.push({ k: 'crossd', text: CR.crossAlertText(crossD.newA, crossD.newB, crossD.latestT, a['crossd-url'] || '', CR.CROSS_D, nk('crossd'), { risk, btc }) });
   if (crossD?.failed) msgs.push({ k: 'alert', text: `訊號掃描台｜日線金叉掃描失敗 ${T.tpe(nowMs)} 台灣時間\n${crossD.failed}\n下一個整點自動重試；同一根日線 K 只通知一次` });
   const dailyMsg = daily ? T.dailyText({ nowMs, ...daily, state, issueUrl, warnings }, CFG) : '';
   if (dailyMsg) msgs.push({ k: 'daily', text: dailyMsg });
@@ -461,6 +464,8 @@ async function main() {
   for (const g of groupByTopic(outMsgs)) {
     for (const m of splitMessages(g.text, 3500)) fs.writeFileSync(path.join(outDir, fileName(++tgN, g.k)), T.render(m, 'html'));
   }
+  let mN = 0;
+  for (const g of groupByTopic(outMsgs.muted || [])) fs.writeFileSync(path.join(outDir, mutedName(++mN, g.k)), T.render(g.text, 'html'));
 
   const comment = [];
   const mdLines = t => T.render(t, 'md').replace(/\n/g, '  \n');

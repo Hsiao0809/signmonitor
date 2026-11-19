@@ -1,9 +1,16 @@
 {
-  "mode": "legacy",
+  "mode": "tiered",
   "digestAfter": "19:30",
   "resonanceHours": 48,
   "resonanceCoolHours": 24,
   "showNth": true,
   "showPrev": true,
-  "tiers": {}
+  "intrahourPush": false,
+  "tiers": {
+    "pre": "C",
+    "quiet": "C",
+    "cross": "A",
+    "crossd": "A",
+    "gainer": "A"
+  }
 }

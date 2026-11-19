@@ -9,6 +9,7 @@
    - 勝率扣 0.2% 來回成本。
    ============================================================ */
 import zlib from 'node:zlib';
+import { simRule, ruleStats } from './rule.mjs';
 
 export const H = 3600e3;
 export const HZ = [4, 24, 72];
@@ -153,7 +154,7 @@ export function parseRun(parts) {
 export function parseShadow(d) {
   if (!d || (d.k !== 'gnew' && d.k !== 'gold') || !d.b || !isFinite(d.t) || !Array.isArray(d.src)) return null;
   const tg = [...(d.avoid ? ['勿空'] : []), ...(d.tfs || []).map(t => String(t).toUpperCase())];
-  return { k: d.k, b: d.b, c: '加密', t: d.t, tg, v: [d.src[0]], src: d.src, id: `${d.k}|${d.b}|${d.t}|${d.src[0]}` };
+  return { k: d.k, b: d.b, c: '加密', t: d.t, tg, v: [d.src[0]], src: d.src, id: `${d.k}|${d.b}|${d.t}|${d.src[0]}`, ...(d.peak > 0 ? { pk: d.peak } : {}) };
 }
 
 /** 發送紀錄的行（已 JSON.parse）→ 依 run 分組；只收發送成功的 */
@@ -228,8 +229,38 @@ export function fill(rec, bars, bench, now) {
     rec.m[h] = [r[0], r[1], r[2], bx].map(v => v == null ? null : Math.round(v * 1e5) / 1e5);
     changed = true;
   }
+  /* 照規則交易（只算有停損價的做空轉弱）：72 小時資料齊了才算一次 */
+  if (rec.pk > 0 && rec.m[72] && !rec.rr) {
+    const path = [];
+    for (let i = 0; i < 72; i++) { const b = bars.get(rec.st + i * H); if (!b) { path.length = 0; break; } path.push({ h: b[2], l: b[3], c: b[4] }); }
+    const sim = path.length ? simRule(-1, rec.e, rec.pk, path) : null;
+    if (sim) { rec.rr = [sim.r, sim.why]; changed = true; }
+  }
   return changed;
 }
+
+/* ---------------- 大盤狀態：BTC 4H EMA20 是否在 SMA30 上方 ---------------- */
+/** btc1h：Map(開盤時間 → [t,o,h,l,c]) 的 1H K → 函式 t => 'bull'｜'bear'｜null（訊號時間前最後一根已收盤 4H K 的狀態） */
+export function regimeFn(btc1h) {
+  const H4 = 4 * H, by = new Map();
+  for (const [t, b] of btc1h || []) {
+    const k = Math.floor(t / H4) * H4;
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(b);
+  }
+  const bars = [...by.entries()].filter(([, g]) => g.length === 4).sort((a, b) => a[0] - b[0])
+    .map(([t, g]) => ({ t, c: g.sort((x, y) => x[0] - y[0])[3][4] }));
+  const st = new Map(), k = 2 / 21;
+  let ema = null;
+  bars.forEach((b, i) => {
+    if (i && b.t - bars[i - 1].t !== H4) { ema = null; }   /* 缺 K 就重新暖身 */
+    ema = ema == null ? b.c : b.c * k + ema * (1 - k);
+    const win = bars.slice(Math.max(0, i - 29), i + 1);
+    if (win.length === 30 && win[29].t - win[0].t === 29 * H4) { const sma = win.reduce((a, x) => a + x.c, 0) / 30; if (i >= 49) st.set(b.t, ema > sma ? 'bull' : 'bear'); }
+  });
+  return t => st.get(Math.floor(t / H4) * H4 - H4) ?? null;
+}
+export const REGIME_KINDS = ['hourly', 'est', 'pre', 'dormant', 'rate', 'cross', 'crossd'];
 /** 72h 補完，或過了 84 小時（資料缺口）就結案 */
 export const isDone = (rec, now) => !!(rec.m && rec.m[72]) || now - rec.t > 84 * H;
 
@@ -340,7 +371,20 @@ export function summarize(recs, now) {
         if (HZ.some(hh => h[hh].n)) shapes.push({ m, c, label, h });
       }
     }
-    win[key] = { n: rs.length, kinds, feats, marks, shapes };
+    /* 大盤狀態：加密的做多類訊號，依訊號當時 BTC 4H 金叉中／死叉中分開算 */
+    const regime = [];
+    for (const k of REGIME_KINDS) for (const rg of ['bull', 'bear']) {
+      const g = rs.filter(r => r.k === k && r.c === '加密' && r.rg === rg);
+      if (g.length) regime.push({ k, rg, h: Object.fromEntries(HZ.map(h => [h, stat(g, h)])) });
+    }
+    /* 照規則交易：做空轉弱（停損＝近期高點、2R 平一半後保本、72 小時到期） */
+    const rule = [];
+    for (const k of ['gnew', 'gnewp', 'gold', 'goldp']) {
+      const of = KINDS[k].of;
+      const g = rs.filter(r => (of ? of(r) : r.k === k) && r.rr);
+      if (g.length) rule.push({ k, ...ruleStats(g.map(r => r.rr[0])) });
+    }
+    win[key] = { n: rs.length, kinds, feats, marks, shapes, regime, rule };
   }
   const recent = recs.filter(r => r.m && r.m[4]).sort((a, b) => b.t - a.t).slice(0, 120).map(r => ({
     k: r.k, b: r.b, c: r.c, t: r.t, v: (r.v || [])[0] || null, x: r.x ?? r.xs ?? null, ch: r.ch ?? null, tg: (r.tg || []).filter(x => x !== '自選').slice(0, 3), w: (r.tg || []).includes('自選') ? 1 : 0,
@@ -388,6 +432,16 @@ export function renderMd(sum) {
     L.push('## 結構標記（盤中爆量／推算／預警，持有 72 小時；2026-11-15 起）', '', '| 類別 | 標記 | 筆數 | 平均 | 勝率 | 期間最大有利 | 期間最大不利 |', '|---|---|---:|---:|---:|---:|---:|');
     for (const x of w.shapes) { const t = x.h[72]; if (t.n) L.push(`| ${x.c} | ${x.label} | ${t.n} | ${pct(t.avg)} | ${t.win}% | ${pct(t.up)} | ${pct(t.dn)} |`); }
     L.push('');
+  }
+  if (w.regime && w.regime.length) {
+    L.push('## 大盤狀態（加密做多類，持有 72 小時；依訊號當時 BTC 4H EMA20／SMA30）', '', '| 訊號 | BTC 4H | 筆數 | 獨立時段 | 平均 | 勝率 | 超額 |', '|---|---|---:|---:|---:|---:|---:|');
+    for (const x of w.regime) { const t = x.h[72]; if (t.n) L.push(`| ${KINDS[x.k].l} | ${x.rg === 'bull' ? '金叉中' : '死叉中'} | ${t.n} | ${t.nh} | ${pct(t.avg)} | ${t.win}% | ${pct(t.ex)} |`); }
+    L.push('', '用來驗證「BTC 4H 死叉中不做多」有沒有用：金叉中明顯比死叉中好，才把它寫成規則。', '');
+  }
+  if (w.rule && w.rule.length) {
+    L.push('## 照規則交易：做空轉弱（2026-11-19 起）', '', '| 規則 | 筆數 | 平均 | 中位數 | 勝率 |', '|---|---:|---:|---:|---:|');
+    for (const x of w.rule) L.push(`| ${KINDS[x.k].l} | ${x.n} | ${x.avg >= 0 ? '+' : ''}${x.avg}R | ${x.med >= 0 ? '+' : ''}${x.med}R | ${x.win}% |`);
+    L.push('', '轉弱收盤放空、停損＝近期高點、到 2R 先平一半並把停損移到成本、72 小時到期平倉，扣 0.2% 成本。金叉的照規則成績在「金叉清單」Issue。', '');
   }
   L.push('## 盤中爆量細分（全部期間，24 小時：有這個條件／沒有）', '', '| 類別 | 條件 | 有：筆數 | 有：超額 | 有：反向做空 | 沒有：筆數 | 沒有：超額 |', '|---|---|---:|---:|---:|---:|---:|');
   for (const f of w.feats) L.push(`| ${f.c} | ${f.label} | ${f.yes[24].n || 0} | ${pct(f.yes[24].ex)} | ${pct(f.yes[24].fd)} | ${f.no[24].n || 0} | ${pct(f.no[24].ex)} |`);

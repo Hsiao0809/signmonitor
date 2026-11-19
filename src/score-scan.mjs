@@ -94,7 +94,7 @@ async function main() {
   const due = [...open.values()].filter(r => r.src && (r.e == null || SC.HZ.some(h => !(r.m && r.m[h]) && now >= (r.st ?? r.t) + h * H + 2 * 60e3)));
   const keys = [...new Set(due.map(r => r.src.join(':')))];
   const bars = new Map();
-  const queue = [...keys, 'okx:BTC-USDT-SWAP', 'okx:QQQ-USDT-SWAP'];
+  const queue = [...keys, 'okx:BTC-USDT-SWAP', 'okx:QQQ-USDT-SWAP', 'binance:BTCUSDT'];
   let failed = 0;
   await Promise.all(Array.from({ length: 4 }, async () => {
     while (queue.length) {
@@ -114,6 +114,10 @@ async function main() {
     if (SC.fill(r, b, bn ? bench[bn] : null, now)) filled++;
   }
 
+  /* 3b. 大盤狀態（BTC 4H，Binance 1H 約 41 天）：還沒標的紀錄補上；結案前標好，done/ 只追加不回頭改 */
+  const rgAt = SC.regimeFn(bars.get('binance:BTCUSDT'));
+  for (const r of open.values()) if (r.rg === undefined && SC.REGIME_KINDS.includes(r.k) && r.c === '加密') { const g = rgAt(r.t); if (g) r.rg = g; }
+
   /* 4. 結案的搬到 done/ */
   let closed = 0;
   for (const [id, r] of open) {
@@ -131,6 +135,7 @@ async function main() {
 
   /* 5. 統計 → Issue 本文 */
   const done = fs.readdirSync(path.join(DIR, 'done')).filter(f => f.endsWith('.jsonl')).flatMap(f => readJsonl(path.join(DIR, 'done', f)));
+  for (const r of done) if (r.rg === undefined && SC.REGIME_KINDS.includes(r.k) && r.c === '加密') { const g = rgAt(r.t); if (g) r.rg = g; }   /* 只用在這次統計，不改檔案 */
   const sum = SC.summarize([...done, ...openArr], now);
   fs.writeFileSync(path.join(OUT, 'score-body.md'), SC.embedScore(SC.renderMd(sum), sum));
   console.log(`訊號成績：新批次 ${runsNew}、新紀錄 ${added}、補上 ${filled}、結案 ${closed}、追蹤中 ${openArr.length}、已結案 ${done.length}；抓 K 線 ${keys.length} 檔（失敗 ${failed}）`);

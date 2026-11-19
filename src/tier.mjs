@@ -4,6 +4,7 @@
    - 共振：同一個幣在 48 小時內「早期型」加「金叉」都出現，另外推一則升級通知（新話題「共振」）；只升級，不取代原本那則。
      做空候選方向相反，不參與共振。
    - 其他（每日掃描、布局清單、狀態變化、系統通知）原樣即時推。
+   - tiers 可把任何類型設成 A（即時）、B（每日摘要）、C（不推 Telegram，只留網頁與 Issue）。
    模式（config/tier.json 的 mode，或環境變數 TIER_MODE）：
      legacy：推播完全照舊；只在背景記錄「若分級會怎麼發」到 logs/tier/，供並行驗證。預設值。
      tiered：依上面規則推播。
@@ -28,7 +29,8 @@ export const DEFAULTS = {
   keepHours: 72,
   showNth: true,                 /* 每個幣後面標「今日第 N 次」（獨立於 mode，legacy 也有效）；false＝不標 */
   showPrev: true,                /* 每個幣後面標「上次 HH:MM」連到同話題上一則（24 小時內），單幣時另用回覆引用；false＝不標也不引用 */
-  tiers: {}                      /* 例：{ "gainer": "A" } 把某個類型改回即時推 */
+  intrahourPush: true,           /* 第 15／30／45 分盤中推算是否發 Telegram；false＝只寫網頁與 Issue「盤中預警」 */
+  tiers: {}                      /* 例：{ "gainer": "A" } 把某個類型改回即時推；"C"＝不推 Telegram（只留網頁與 Issue） */
 };
 
 export function loadConfig(file = CONFIG_FILE, env = process.env) {
@@ -43,7 +45,7 @@ export function loadConfig(file = CONFIG_FILE, env = process.env) {
 
 export function tierOf(k, cfg = DEFAULTS) {
   const o = cfg.tiers?.[k];
-  if (o === 'A' || o === 'B') return o;
+  if (o === 'A' || o === 'B' || o === 'C') return o;
   if (CONFIRM.includes(k)) return 'B';
   return 'A';                    /* 早期型與其他類型都即時推 */
 }
@@ -154,7 +156,8 @@ function resonanceText(events, nowMs, hours) {
 
 function digestMessages(st, nowMs, cfg) {
   const p = tpeParts(nowMs), out = [];
-  for (const k of CONFIRM) {
+  /* 所有被設成 B 的類型都進摘要（不只確認型）：確認型照固定順序在前，其他類型依第一次出現的順序 */
+  for (const k of [...new Set([...CONFIRM, ...st.pending.map(x => x.k)])]) {
     if (tierOf(k, cfg) !== 'B') continue;
     const items = st.pending.filter(x => x.k === k);
     if (!items.length) continue;
@@ -176,10 +179,12 @@ export function plan(msgs, sigs, nowMs, st, cfg = DEFAULTS) {
   st.signals = st.signals.filter(s => nowMs - s.t < cfg.keepHours * H);
   for (const b of Object.keys(st.resonance)) if (nowMs - st.resonance[b] > cfg.keepHours * H) delete st.resonance[b];
 
-  const immediate = [], deferred = [];
+  const immediate = [], deferred = [], muted = [];
   for (const m of msgs) {
     if (!m.text) continue;
-    if (tierOf(m.k, cfg) === 'B') { deferred.push(m); st.pending.push({ t: nowMs, k: m.k, text: m.text }); }
+    const tier = tierOf(m.k, cfg);
+    if (tier === 'C') muted.push(m);   /* 不推：訊號照樣記錄（共振仍會用到），網頁與 Issue 不受影響 */
+    else if (tier === 'B') { deferred.push(m); st.pending.push({ t: nowMs, k: m.k, text: m.text }); }
     else immediate.push(m);
   }
   const res = resonanceOf(st, newSigs, nowMs, cfg);
@@ -193,10 +198,11 @@ export function plan(msgs, sigs, nowMs, st, cfg = DEFAULTS) {
   }
   const out = [...immediate, ...extra, ...digest.map(({ k, text }) => ({ k, text }))];
   return {
-    out,
+    out, muted,
     info: {
       immediate: immediate.map(m => ({ k: m.k, chars: m.text.length })),
       deferred: deferred.map(m => ({ k: m.k, chars: m.text.length })),
+      muted: muted.map(m => ({ k: m.k, chars: m.text.length })),
       resonance: res.map(e => ({ base: e.base, early: e.early.map(s => s.k), confirm: e.conf.map(s => s.k) })),
       digest: digest.map(d => ({ k: d.k, n: d.digest, chars: d.text.length })),
       pending: st.pending.length
@@ -225,7 +231,7 @@ export function applyTier(msgs, sigs, nowMs, opts = {}) {
   const dir = opts.dir || 'data/tier', logDir = opts.logDir || 'logs/tier';
   try {
     const st = loadState(dir);
-    const { out, info } = plan(msgs, sigs, nowMs, st, cfg);
+    const { out, muted, info } = plan(msgs, sigs, nowMs, st, cfg);
     const bad = missingImmediate(msgs, out, cfg);
     const tiered = cfg.mode === 'tiered' && !bad.length;
     saveState(dir, st);
@@ -236,7 +242,9 @@ export function applyTier(msgs, sigs, nowMs, opts = {}) {
       sent: tiered ? 'tiered' : 'legacy', ...(bad.length ? { error: `即時訊息被漏掉：${bad.join(',')}` } : {}), ...info
     }) + '\n');
     if (bad.length) console.error(`tier error: 即時訊息被漏掉（${bad.join(',')}），本輪退回原本推播`);
-    return tiered ? out : msgs;
+    if (!tiered) return msgs;
+    out.muted = muted;   /* 不推的訊息：呼叫端寫成 muted 檔，notify.mjs 只記錄不發送 */
+    return out;
   } catch (e) {
     console.error(`tier error: ${e.message}，本輪退回原本推播`);
     return msgs;
