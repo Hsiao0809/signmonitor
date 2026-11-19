@@ -8,3 +8,4 @@
 {"t":1795060800000,"k":"gold","b":"PIEVERSE","key":"PIEVERSE","tfs":["4h"],"c":3.0552,"brk":3.3027,"peak":3.6374,"avoid":1,"tags":["spike","wide"],"src":["okx","PIEVERSE-USDT-SWAP"]}
 {"t":1795060800000,"k":"gnew","b":"MMT","key":"MMT","tfs":["4h"],"c":0.2122,"brk":0.221,"peak":0.2836,"avoid":1,"tags":["spike","wide"],"src":["okx","MMT-USDT-SWAP"]}
 {"t":1795060800000,"k":"gold","b":"MMT","key":"MMT","tfs":["4h"],"c":0.2122,"brk":0.221,"peak":0.2836,"avoid":1,"tags":["spike","wide"],"src":["okx","MMT-USDT-SWAP"]}
+{"t":1795064400000,"k":"gold","b":"IRYS","key":"IRYS","tfs":["1h"],"c":0.0222,"brk":0.02278,"peak":0.02549,"avoid":1,"tags":["spike","wide"],"src":["okx","IRYS-USDT-SWAP"]}
