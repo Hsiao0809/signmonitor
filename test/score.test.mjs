@@ -165,3 +165,44 @@ test('轉弱新舊規則並行：解析 logs/gainer、勿空子集合、Issue �
   assert.match(md, /新舊規則並行/);
   assert.match(md, /\| 轉弱・舊規則（排除勿空） \| 1 \| \+5\.00% \|/);
 });
+
+/* 自訂 OHLC 的 1H K：rows＝[[o,h,l,c], ...]，第一根開盤時間 t0 */
+const ohlc = (t0, rows) => new Map(rows.map(([o, h, l, c], i) => [t0 + i * H, [t0 + i * H, o, h, l, c]]));
+
+test('掛單方案（gplan）：解析、成交判定、停損與到期、沒成交', () => {
+  const t = tw('2026-11-20 08:00');
+  assert.equal(SC.parseShadow({ t, k: 'gplan', b: 'A', src: ['okx', 'A'], lim: 1, sl: 0.9 }), null);   /* 停損不在掛單價之上 */
+  const p = SC.parseShadow({ t, k: 'gplan', b: 'BREV', tfs: ['4h'], lim: 0.09224, sl: 0.1356, push: 1, avoid: 0, src: ['okx', 'BREV-USDT-SWAP'] });
+  assert.deepEqual(p.tg, ['推播', '4H']); assert.equal(p.lim, 0.09224); assert.equal(p.sl, 0.1356);
+  const flat = n => Array.from({ length: n }, () => [1, 1.01, 0.99, 1]);
+  /* 第 3 根碰到 1.1 成交，之後 72 根收 1.0 → (1.1-1.0)/1.1 扣成本，除以停損距離 (1.32/1.1-1)=0.2 */
+  const fillTime = ohlc(t, [...flat(2), [1, 1.12, 0.99, 1.05], ...flat(72)]);
+  assert.deepEqual(SC.simPlan(1.1, 1.32, fillTime, t), [Math.round(((1.1 - 1) / 1.1 - 0.002) / 0.2 * 100) / 100, '到期']);
+  /* 成交後碰停損；跳空開在停損上方用開盤價 */
+  const stop = ohlc(t, [[1, 1.12, 0.99, 1.05], [1.2, 1.25, 1.1, 1.2], [1.4, 1.5, 1.35, 1.45], ...flat(72)]);
+  assert.deepEqual(SC.simPlan(1.1, 1.32, stop, t), [Math.round(((1.1 - 1.4) / 1.1 - 0.002) / 0.2 * 100) / 100, '停損']);
+  /* 12 根都沒碰到 → 未成交；成交前先碰停損 → 未成交 */
+  assert.deepEqual(SC.simPlan(1.1, 1.32, ohlc(t, flat(84)), t), [0, '未成交']);
+  assert.deepEqual(SC.simPlan(1.1, 1.32, ohlc(t, [[1, 1.4, 0.99, 1.3], ...flat(83)]), t), [0, '未成交']);
+  /* K 線不夠 → null */
+  assert.equal(SC.simPlan(1.1, 1.32, ohlc(t, [[1, 1.12, 0.99, 1.05], ...flat(10)]), t), null);
+  /* fill()：84 小時後才算；結案要等 pr */
+  const rec = { ...SC.parseShadow({ t, k: 'gplan', b: 'X', tfs: ['4h'], lim: 1.1, sl: 1.32, push: 1, src: ['okx', 'X'] }) };
+  const bars = ohlc(t - H, [[1, 1, 1, 1], ...flat(2), [1, 1.12, 0.99, 1.05], ...flat(80)]);
+  SC.fill(rec, bars, null, t + 80 * H);
+  assert.equal(rec.pr, undefined); assert.ok(rec.m[72]); assert.equal(SC.isDone(rec, t + 80 * H), false);
+  SC.fill(rec, bars, null, t + 85 * H);
+  assert.equal(rec.pr[1], '到期'); assert.equal(SC.isDone(rec, t + 85 * H), true);
+  /* 彙整：成交率、R；Issue 有方案表 */
+  const miss = { ...rec, id: 'm', pr: [0, '未成交'] };
+  const sum = SC.summarize([rec, miss], t + 90 * H);
+  const pl = sum.win.all.plan.find(x => x.k === 'gplanp');
+  assert.equal(pl.sig, 2); assert.equal(pl.fill, 50); assert.equal(pl.n, 1); assert.equal(pl.avg, rec.pr[0]);
+  assert.match(SC.renderMd(sum), /4H 轉弱掛單方案（實際推播） \| 2 \| 50% \| 1 \|/);
+  assert.ok(!sum.win.all.kinds.some(r => r.k === 'gplan') || !/\| 4H 轉弱掛單方案（全部） \| 加密 \|/.test(SC.renderMd(sum)));   /* 不混進各訊號表 */
+});
+
+test('解析：做空候選 4H＋1H 轉弱也認得', () => {
+  const runs = SC.parseRun([part('2026-11-20T08:02:00+08:00', '【做空候選・轉弱】11-20 08:00 台灣時間（1 檔）\n\nBREV 4H＋1H 轉弱｜24h +47.4%（OKX +45.4%）｜成交額 57.1M')]);
+  assert.deepEqual(runs.map(r => [r.k, r.b]), [['gainer', 'BREV']]);
+});

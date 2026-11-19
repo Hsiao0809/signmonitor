@@ -3,15 +3,18 @@
    來源：OKX、Bitget 合約、Bybit 合約（WebSocket）、Binance 現貨的 24h 漲幅榜。
    名單條件（任一家達標就列入，其他家有掛牌的一併顯示）：
      該家 24h 漲幅排前 20、漲幅 ≥ 30%、24h 成交額 ≥ 50 萬 USDT
-   只是漲幅高不是進場訊號：暴漲幣可以繼續漲好幾倍。所以另外判斷「轉弱」，轉弱才推播：
+   只是漲幅高不是進場訊號：暴漲幣可以繼續漲好幾倍。所以另外判斷「轉弱」：
      已收盤的最後一根 K，收盤跌破「近期高點之後整段回檔的最低點」，而且它的最高點比近期高點低（高點沒有再創）；
      1H 看近 24 根、4H 看近 12 根。（2026-11-13 前是「跌破前一根最低點」，現在只並行記錄給訊號成績比較）
-   標籤只標不過濾（跟爆量規則一致）：
-     24h 內爆量／7 天內沉睡甦醒／布局清單追蹤中 → 可能是剛啟動的多方，標「勿空」；
-     名單照列，但這類轉弱只記在網頁的轉弱紀錄（標「未推播」），不推播
-     只有單一交易所大漲、停損過寬（以 24h 高點當停損，距離 > 10%）、無合約、沒有 OKX／Bitget K 線
-   轉弱同一檔：1H 12 小時、4H 24 小時只通知一次，同一根 K 不重複。
-   沒有回測，只當觀察。
+   推播（2026-11-20 起，依 2026-11-19 回測：522 次暴漲、OKX＋Bitget 永續）：
+     只推 4H 轉弱，而且 24h 成交額 ≥ 15M USDT、沒有「勿空」。1H 轉弱只記在網頁（回測約 0R）。
+     推播附掛單方案：限價空在 (4H 收盤＋被跌破的回檔低點) ÷ 2，掛 12 小時沒成交就撤；
+     停損＝近 12 根 1H 最高點；成交後持有 72 小時收盤平倉（回測平均 +0.22R、成交率 85%）。
+   標籤只標不過濾：
+     7 天內沉睡甦醒／布局清單追蹤中 → 可能是剛啟動的多方，標「勿空」，轉弱只記網頁不推播
+     （24h 內爆量 11-20 起不再算勿空：上榜幣幾乎都是爆量拉上來的，回測照做空是賺的）
+     只有單一交易所大漲、無合約、沒有 OKX／Bitget K 線
+   轉弱同一檔：1H 12 小時、4H 24 小時只記一次，同一根 K 不重複。
    ============================================================ */
 import { cardLine } from './risk.mjs';
 import zlib from 'node:zlib';
@@ -24,22 +27,23 @@ export const GAINER = {
   lookback: { '1h': 24, '4h': 12 },
   minBars: { '1h': 8, '4h': 5 },
   coolH: { '1h': 12, '4h': 24 },
-  keepDays: 7, maxItems: 60, maxLines: 12, stopWide: 10,
-  seenKeepH: 48, reentryH: 6
+  keepDays: 7, maxItems: 60, maxLines: 12,
+  seenKeepH: 48, reentryH: 6,
+  /* 推播與掛單方案（見檔頭）：stopBars＝停損看近幾根已收盤 1H 的最高點 */
+  push: { tf: '4h', minQv: 15e6, limitH: 12, holdH: 72, stopBars: 12 }
 };
 export const PERPS = ['okx', 'bitget', 'bybit'];
 export const KLINE = ['okx', 'bitget'];   /* Bybit 的 K 線 API 擋雲端，判斷轉弱只用這兩家 */
 const LABEL = { okx: 'OKX', bitget: 'Bitget', bybit: 'Bybit', binance: 'Binance 現貨' };
 export const TAGS = {
-  spike: '24 小時內爆量，可能剛啟動，勿空',
+  spike: '24 小時內爆量',
   wake: '7 天內沉睡甦醒，勿空',
   layout: '布局清單追蹤中，勿空',
   solo: '只有單一交易所大漲',
-  wide: '停損過寬：降槓桿、縮倉或放棄',
   noperp: '沒有合約（Binance 現貨榜），不能做空',
   nok: '沒有 OKX／Bitget 合約，無法判斷轉弱'
 };
-const AVOID = ['spike', 'wake', 'layout'];
+const AVOID = ['wake', 'layout'];
 export const isAvoid = tags => (tags || []).some(t => AVOID.includes(t));
 
 /* 1000PEPE、10000SATS 之類的合約名稱，跟現貨名稱對在一起 */
@@ -120,7 +124,7 @@ export function weakPrev(bars, tf, now, cfg = GAINER) {
   return { tf, t: last.t, c: last.c, brk: prev.l, peak, drop: +((peak - last.c) / peak * 100).toFixed(1) };
 }
 
-/** 把 K 線結果補進名單項目：weak（新規則）、weakOld（舊規則）、24h 高點、停損距離 */
+/** 把 K 線結果補進名單項目：weak（新規則）、weakOld（舊規則）、24h 高點、近 12 根 1H 高點（停損）與停損距離 */
 export function enrich(it, bars1h, bars4h, now, cfg = GAINER) {
   const weak = {}, weakOld = {};
   const w1 = weakOf(bars1h, '1h', now, cfg), w4 = weakOf(bars4h, '4h', now, cfg);
@@ -133,8 +137,30 @@ export function enrich(it, bars1h, bars4h, now, cfg = GAINER) {
   it.weakOld = weakOld;
   const day = (bars1h || []).filter(b => isFinite(b.h) && b.t >= now - D);
   it.hi24 = day.length ? Math.max(...day.map(b => b.h)) : null;
-  it.stopPct = it.hi24 && it.px > 0 ? +((it.hi24 / it.px - 1) * 100).toFixed(1) : null;
+  const c1 = closedOf(bars1h, '1h', now).slice(-cfg.push.stopBars);
+  it.hi12 = c1.length ? Math.max(...c1.map(b => b.h)) : null;
+  it.stopPct = it.hi12 && it.px > 0 ? +((it.hi12 / it.px - 1) * 100).toFixed(1) : null;
   return it;
+}
+
+/**
+ * 掛單方案（只用在 4H 轉弱）：限價空 lim＝(收盤＋被跌破的回檔低點) ÷ 2，掛到 exp；停損 sl＝近 12 根 1H 最高點。
+ * 停損不在掛單價之上、或現價已經碰到停損 → null（不推）
+ */
+export function planOf(it, w, T, cfg = GAINER) {
+  if (!w || !(w.c > 0) || !(w.brk > 0)) return null;
+  const lim = (w.c + w.brk) / 2, sl = it.hi12;
+  if (!(sl > lim) || (it.px > 0 && it.px >= sl)) return null;
+  return { lim, sl, slPct: +((sl / lim - 1) * 100).toFixed(1), exp: T + cfg.push.limitH * H, hold: cfg.push.holdH };
+}
+
+/** 為什麼不推：'1h'＝只有 1H 轉弱、'avoid'＝勿空、'thin'＝成交額不足、'noplan'＝停損位置不對；推播回傳 null */
+export function whyMuted(it, tfs, plan, cfg = GAINER) {
+  if (!tfs.includes(cfg.push.tf)) return '1h';
+  if (isAvoid(it.tags)) return 'avoid';
+  if (!(it.qv >= cfg.push.minQv)) return 'thin';
+  if (!plan) return 'noplan';
+  return null;
 }
 
 /** 已有 K 線之後的標籤；ctx 見 contextOf */
@@ -145,7 +171,6 @@ export function tagsOf(it, ctx, cfg = GAINER) {
   if (ctx?.layout?.has(it.key)) t.push('layout');
   const vs = Object.values(it.ex);
   if (vs.length >= 2 && vs.filter(x => x.chg >= it.chgMax * 0.5).length === 1) t.push('solo');
-  if (it.stopPct != null && it.stopPct > cfg.stopWide) t.push('wide');
   if (!it.sv) t.push('noperp');
   else if (!it.kex) t.push('nok');
   return t;
@@ -183,12 +208,14 @@ export function applyScan(state, items, T, counts = {}, cfg = GAINER) {
       state.notified[k] = { bar: w.t, at: T };
     }
     if (!tfs.length) continue;
-    const w = it.weak[tfs[0]];
+    const w = it.weak[tfs[0]];                      /* tfs 依 4h、1h 排序：有 4H 就用 4H */
+    const plan = tfs.includes(cfg.push.tf) ? planOf(it, it.weak[cfg.push.tf], T, cfg) : null;
+    const why = whyMuted(it, tfs, plan, cfg);
     out.push({
       t: T, key: it.key, base: it.base, tfs, c: w.c, brk: w.brk, peak: w.peak, drop: w.drop,
-      chg: it.chgMax, qv: it.qv, stop: it.stopPct, hi24: it.hi24, price: it.px, tags: it.tags,
+      chg: it.chgMax, qv: it.qv, stop: it.stopPct, hi24: it.hi24, hi12: it.hi12, price: it.px, tags: it.tags,
       sv: it.sv, sid: it.sid, ex: Object.fromEntries(Object.entries(it.ex).map(([v, x]) => [v, x.chg])),
-      rule: 'range', ...(isAvoid(it.tags) ? { muted: 1 } : {})
+      rule: 'range', ...(plan ? plan : {}), ...(why ? { muted: 1, why } : {})
     });
   }
   out.sort((a, b) => b.chg - a.chg);
@@ -198,14 +225,15 @@ export function applyScan(state, items, T, counts = {}, cfg = GAINER) {
   state.items = items;
   state.counts = counts;
   state.lastHour = T;
-  /* 有「勿空」標籤的轉弱只記在網頁（轉弱紀錄標「未推播」），不推播 */
+  /* 只推 4H、成交額夠、沒有勿空的；其他只記在網頁（轉弱紀錄標「未推播」與原因） */
   return out.filter(e => !e.muted);
 }
 
 /**
  * 新舊規則並行紀錄（給訊號成績比較）：每一輪把兩種規則各自的轉弱寫成一筆，不管有沒有推播。
  * 去重跟推播一樣：同一檔同一規則，1H 12 小時、4H 24 小時一次，同一根 K 不重複；1H 與 4H 同時成立合成一筆。
- * 回傳 [{ t, k: 'gnew'|'gold', b, key, tfs, c, brk, peak, avoid, src }]；去重狀態存在 state.shadow
+ * 另記 gplan：每一次 4H 轉弱（新規則）的掛單方案（lim、sl），push＝實際會推播；給成績算「照方案掛單」的結果。
+ * 回傳 [{ t, k: 'gnew'|'gold'|'gplan', b, key, tfs, c, brk, peak, avoid, src, ... }]；去重狀態存在 state.shadow
  */
 export function shadowOf(state, items, T, cfg = GAINER) {
   const sh = state.shadow || (state.shadow = {});
@@ -226,6 +254,16 @@ export function shadowOf(state, items, T, cfg = GAINER) {
       const w = it[field][tfs[0]];
       out.push({ t: T, k, b: it.base, key: it.key, tfs, c: w.c, brk: w.brk, peak: w.peak, avoid: isAvoid(it.tags) ? 1 : 0, tags: it.tags || [], src: [it.kex, it.kid] });
     }
+    const w4 = it.weak?.[cfg.push.tf];
+    const plan = w4 && planOf(it, w4, T, cfg);
+    if (plan) {
+      const key = `${it.key}|gplan|${cfg.push.tf}`, prev = sh[key];
+      if (!(prev && (prev.bar === w4.t || T - prev.at < cfg.coolH[cfg.push.tf] * H))) {
+        sh[key] = { bar: w4.t, at: T };
+        out.push({ t: T, k: 'gplan', b: it.base, key: it.key, tfs: [cfg.push.tf], c: w4.c, brk: w4.brk, peak: w4.peak, lim: +plan.lim.toPrecision(6), sl: plan.sl, qv: Math.round(it.qv || 0),
+          push: whyMuted(it, [cfg.push.tf], plan, cfg) ? 0 : 1, avoid: isAvoid(it.tags) ? 1 : 0, tags: it.tags || [], src: [it.kex, it.kid] });
+      }
+    }
   }
   for (const k of Object.keys(sh)) if (T - sh[k].at > cfg.keepDays * D) delete sh[k];
   return out;
@@ -243,22 +281,29 @@ export function tvOf(x) {
 const exText = ex => Object.entries(ex || {}).map(([v, c]) => `${LABEL[v] || v} ${pcs(typeof c === 'object' ? c.chg : c)}`).join('／');
 const tagText = tags => (tags || []).map(t => TAGS[t]).filter(Boolean);
 
-/** opts.risk：config/risk.json（null＝不加下單卡）。停損用 24h 高點 */
+export const WHY = { '1h': '只有 1H 轉弱', avoid: '勿空', thin: '成交額不足 15M', noplan: '停損位置不對' };
+const mdhm = t => `${tpe(t).slice(5, 10)} ${hhmm(t)}`;
+
+/** opts.risk：config/risk.json（null＝不加下單卡）。推播的都是 4H 轉弱＋掛單方案（e.lim、e.sl、e.exp） */
 export function gainerAlertText(events, T, url = '', cfg = GAINER, nth = null, opts = {}) {
   if (!events.length) return '';
   /* 每檔一個段落（空行隔開）：run.mjs 依空行切段，過長時從段落之間切開，不會把連結標記切斷 */
   const blocks = [`【做空候選・轉弱】${tpe(T).slice(5, 10)} ${hhmm(T)} 台灣時間（${events.length} 檔）`];
   events.slice(0, cfg.maxLines).forEach(e => {
     const L = [`${link(e.base, tvOf(e))} ${tfText(e.tfs)} 轉弱｜24h ${pcs(e.chg)}（${exText(e.ex)}）｜成交額 ${money(e.qv)}${nthTag(nth, e.base)}`];
-    L.push(`  收 ${fmtP(e.c)} 跌破${e.rule === 'range' ? '高點後回檔低點' : '前一根低'} ${fmtP(e.brk)}｜自高點回落 ${e.drop}%｜停損（24h 高）${e.hi24 ? fmtP(e.hi24) : '—'}${e.stop != null ? `（距現價 ${e.stop}%）` : ''}`);
+    L.push(`  收 ${fmtP(e.c)} 跌破${e.rule === 'range' ? '高點後回檔低點' : '前一根低'} ${fmtP(e.brk)}｜自高點回落 ${e.drop}%｜現價 ${fmtP(e.price)}`);
+    if (e.lim) {
+      L.push(`  掛單：限價空 ${fmtP(e.lim)}（收盤與跌破價的中間），掛到 ${mdhm(e.exp)}，沒成交就撤單${e.price >= e.lim ? '（現價已在掛單價之上，會直接成交）' : ''}`);
+      L.push(`  停損 ${fmtP(e.sl)}（近 ${cfg.push.stopBars} 小時高點，距掛單價 ${e.slPct}%）｜成交後持有 ${cfg.push.holdH} 小時收盤平倉`);
+      if (opts.risk) { const c = cardLine(-1, e.lim, e.sl, opts.risk, '', { noT2: true }); if (c) L.push(c); }
+    }
     const tg = tagText(e.tags);
     if (tg.length) L.push(`  ${isAvoid(e.tags) ? '⚠ ' : ''}${tg.join('；')}`);
-    if (opts.risk && e.hi24) { const c = cardLine(-1, e.c, e.hi24, opts.risk); if (c) L.push(c); }
     blocks.push(L.join('\n'));
   });
   const foot = [];
   if (events.length > cfg.maxLines) foot.push(`另有 ${events.length - cfg.maxLines} 檔，見網頁`);
-  foot.push('只標記、沒有回測；放空虧損沒有上限，進場前先設好停損。');
+  foot.push('依 11-19 回測（522 次暴漲）：4H 轉弱後掛中間價，平均 +0.22R、成交率 85%；優勢薄，要每筆照做。倉位＝願意虧的錢 ÷ 停損距離。');
   if (url) foot.push(url);
   blocks.push(foot.join('\n'));
   return blocks.join('\n\n');
@@ -267,16 +312,17 @@ export function gainerAlertText(events, T, url = '', cfg = GAINER, nth = null, o
 export function gainerMarkdown(state, { nowMs, warnings = [], note = '', rows = 80 }, cfg = GAINER) {
   const L = [`# 做空候選｜更新 ${tpe(nowMs)} 台灣時間`, ''];
   L.push(`各交易所 24h 漲幅榜（OKX、Bitget、Bybit 合約，Binance 現貨）。任一家漲幅排前 ${cfg.topN}、≥ ${cfg.minChg}%、24h 成交額 ≥ ${money(cfg.minQv)} USDT 就列入；漲幅高只是名單，不是進場訊號。`);
-  L.push(`- **轉弱**才推播：已收盤的最後一根 K 收盤跌破「近期高點之後整段回檔的最低點」，且最高點沒有再創（1H 看近 ${cfg.lookback['1h']} 根、4H 看近 ${cfg.lookback['4h']} 根；高點之後至少要有一根已收盤的 K）。同一檔 1H ${cfg.coolH['1h']} 小時、4H ${cfg.coolH['4h']} 小時只通知一次`);
-  L.push(`- 舊規則（跌破前一根最低點）2026-11-13 起停用推播，跟新規則一起並行記錄到訊號成績比較`);
-  L.push(`- **勿空**標籤：24 小時內爆量、7 天內沉睡甦醒、布局清單追蹤中，可能是剛啟動的多方。名單照列；這類轉弱只記在轉弱紀錄（標「未推播」），不推播`);
-  L.push(`- 停損距離＝24h 高點相對現價；超過 ${cfg.stopWide}% 標「停損過寬」（5 倍逐倉約反向 17–19% 強平，貼著強平線，要降槓桿或縮倉）`);
-  L.push(`- 判斷轉弱只用 OKX、Bitget 的 K 線（Bybit 的 K 線 API 擋雲端）。沒有回測，只當觀察。`);
+  L.push(`- **轉弱**：已收盤的最後一根 K 收盤跌破「近期高點之後整段回檔的最低點」，且最高點沒有再創（1H 看近 ${cfg.lookback['1h']} 根、4H 看近 ${cfg.lookback['4h']} 根；高點之後至少要有一根已收盤的 K）。同一檔 1H ${cfg.coolH['1h']} 小時、4H ${cfg.coolH['4h']} 小時只記一次`);
+  L.push(`- **推播**（11-20 起）：只推 4H 轉弱，且 24h 成交額 ≥ ${money(cfg.push.minQv)} USDT、沒有勿空。1H 轉弱只記在這裡`);
+  L.push(`- **掛單方案**：限價空在 (4H 收盤＋被跌破的回檔低點) ÷ 2，掛 ${cfg.push.limitH} 小時沒成交就撤；停損＝近 ${cfg.push.stopBars} 根 1H 最高點；成交後持有 ${cfg.push.holdH} 小時收盤平倉。依 11-19 回測平均 +0.22R、成交率 85%`);
+  L.push(`- **勿空**標籤：7 天內沉睡甦醒、布局清單追蹤中，可能是剛啟動的多方，轉弱不推播。24 小時內爆量 11-20 起只標記、不算勿空`);
+  L.push(`- 停損距離＝近 ${cfg.push.stopBars} 根 1H 最高點相對現價；倉位用「願意虧的錢 ÷ 停損距離」算`);
+  L.push(`- 舊規則（跌破前一根最低點）只並行記錄到訊號成績。判斷轉弱只用 OKX、Bitget 的 K 線（Bybit 的 K 線 API 擋雲端）`);
   if (note) { L.push(''); L.push(note); }
   L.push('', `## 轉弱紀錄（最近 ${cfg.keepDays} 天，${state.events.length} 筆）`);
   if (state.events.length) {
-    L.push('| 時間 | 代號 | 週期 | 24h 漲幅 | 收盤 | 跌破 | 自高點 | 停損距離 | 標籤 |', '|---|---|---|---|---|---|---|---|---|');
-    state.events.slice(0, rows).forEach(e => L.push(`| ${tpe(e.t).slice(5, 16)} | ${link(e.base, tvOf(e))} | ${tfText(e.tfs)}${e.rule === 'range' ? '' : '（舊規則）'} | ${pcs(e.chg)} | ${fmtP(e.c)} | ${fmtP(e.brk)} | -${e.drop}% | ${e.stop == null ? '—' : `${e.stop}%`} | ${[...(e.muted ? ['未推播（勿空）'] : []), ...tagText(e.tags)].join('；') || '—'} |`));
+    L.push('| 時間 | 代號 | 週期 | 24h 漲幅 | 收盤 | 跌破 | 自高點 | 掛單價 | 停損 | 標籤 |', '|---|---|---|---|---|---|---|---|---|---|');
+    state.events.slice(0, rows).forEach(e => L.push(`| ${tpe(e.t).slice(5, 16)} | ${link(e.base, tvOf(e))} | ${tfText(e.tfs)}${e.rule === 'range' ? '' : '（舊規則）'} | ${pcs(e.chg)} | ${fmtP(e.c)} | ${fmtP(e.brk)} | -${e.drop}% | ${e.lim ? fmtP(e.lim) : '—'} | ${e.sl ? `${fmtP(e.sl)}（${e.slPct}%）` : e.stop == null ? '—' : `${e.stop}%`} | ${[...(e.muted ? [`未推播（${WHY[e.why] || '勿空'}）`] : []), ...tagText(e.tags)].join('；') || '—'} |`));
   } else L.push('無');
   L.push('', `## 目前名單（${state.items.length} 檔）`);
   if (state.items.length) {

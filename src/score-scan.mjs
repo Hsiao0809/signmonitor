@@ -71,7 +71,7 @@ async function main() {
   const gfiles = fs.existsSync(GLOG) ? fs.readdirSync(GLOG).filter(f => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f) && f.slice(0, 10) >= cutoff).sort() : [];
   for (const d of gfiles.flatMap(f => readJsonl(path.join(GLOG, f)))) {
     const s = SC.parseShadow(d);
-    if (!s || st.g[s.id] || open.has(s.id) || now - s.t > 84 * H) continue;
+    if (!s || st.g[s.id] || open.has(s.id) || now - s.t > (s.k === 'gplan' ? SC.planDueH() + 12 : 84) * H) continue;
     st.g[s.id] = s.t; open.set(s.id, s); added++;
   }
   for (const [k, t] of Object.entries(st.g)) if (now - t > 8 * 864e5) delete st.g[k];
@@ -91,7 +91,8 @@ async function main() {
   }
 
   /* 3. 到期的才抓 K 線：進場價還沒有，或某個持有時間剛滿 */
-  const due = [...open.values()].filter(r => r.src && (r.e == null || SC.HZ.some(h => !(r.m && r.m[h]) && now >= (r.st ?? r.t) + h * H + 2 * 60e3)));
+  const due = [...open.values()].filter(r => r.src && (r.e == null || SC.HZ.some(h => !(r.m && r.m[h]) && now >= (r.st ?? r.t) + h * H + 2 * 60e3)
+    || (r.k === 'gplan' && !r.pr && now >= (r.st ?? r.t) + SC.planDueH() * H + 2 * 60e3)));
   const keys = [...new Set(due.map(r => r.src.join(':')))];
   const bars = new Map();
   const queue = [...keys, 'okx:BTC-USDT-SWAP', 'okx:QQQ-USDT-SWAP', 'binance:BTCUSDT'];

@@ -29,8 +29,14 @@ export const KINDS = {
   gnew: { l: '轉弱・新規則（全部）', dir: -1 },
   gnewp: { l: '轉弱・新規則（排除勿空＝實際推播）', dir: -1, of: r => r.k === 'gnew' && !(r.tg || []).includes('勿空') },
   gold: { l: '轉弱・舊規則（全部）', dir: -1 },
-  goldp: { l: '轉弱・舊規則（排除勿空）', dir: -1, of: r => r.k === 'gold' && !(r.tg || []).includes('勿空') }
+  goldp: { l: '轉弱・舊規則（排除勿空）', dir: -1, of: r => r.k === 'gold' && !(r.tg || []).includes('勿空') },
+  /* 4H 轉弱掛單方案（logs/gainer/ 的 gplan，2026-11-20 起）：報酬欄位仍以收盤價計；掛單結果另算（rec.pr，見 simPlan） */
+  gplan: { l: '4H 轉弱掛單方案（全部）', dir: -1 },
+  gplanp: { l: '4H 轉弱掛單方案（實際推播）', dir: -1, of: r => r.k === 'gplan' && (r.tg || []).includes('推播') }
 };
+export const GK = ['gnew', 'gnewp', 'gold', 'goldp', 'gplan', 'gplanp'];
+/* 掛單方案：掛 12 小時、成交後持有 72 小時（與 gainer.mjs GAINER.push 一致） */
+export const PLAN = { limitH: 12, holdH: 72 };
 export const CLS = { '加密': 'crypto', '股票': 'stock', '商品': 'comm' };
 
 /* ---------------- 解析發送紀錄 ---------------- */
@@ -141,7 +147,7 @@ export function parseRun(parts) {
     } else if (kind === '做空候選・轉弱') {
       const t = tw(md, hm1, sent);
       for (const L of lines) {
-        const m = /^((?:【[^】]+】)*)([A-Z0-9]+) (1H|4H)(?:＋4H)? 轉弱/.exec(L);
+        const m = /^((?:【[^】]+】)*)([A-Z0-9]+) (1H|4H)(?:＋(?:1H|4H))? 轉弱/.exec(L);
         if (m) out.push({ k: 'gainer', b: m[2], c: '加密', t, tg: tagsOf(m[1]), v: ['okx', 'bitget'] });
       }
     }
@@ -152,10 +158,41 @@ export function parseRun(parts) {
 
 /** 轉弱並行紀錄（logs/gainer/ 的一行，見 gainer.mjs shadowOf）→ 訊號；K 線來源直接用紀錄裡的合約 */
 export function parseShadow(d) {
-  if (!d || (d.k !== 'gnew' && d.k !== 'gold') || !d.b || !isFinite(d.t) || !Array.isArray(d.src)) return null;
-  const tg = [...(d.avoid ? ['勿空'] : []), ...(d.tfs || []).map(t => String(t).toUpperCase())];
-  return { k: d.k, b: d.b, c: '加密', t: d.t, tg, v: [d.src[0]], src: d.src, id: `${d.k}|${d.b}|${d.t}|${d.src[0]}`, ...(d.peak > 0 ? { pk: d.peak } : {}) };
+  if (!d || !['gnew', 'gold', 'gplan'].includes(d.k) || !d.b || !isFinite(d.t) || !Array.isArray(d.src)) return null;
+  if (d.k === 'gplan' && !(d.lim > 0 && d.sl > d.lim)) return null;
+  const tg = [...(d.avoid ? ['勿空'] : []), ...(d.k === 'gplan' && d.push ? ['推播'] : []), ...(d.tfs || []).map(t => String(t).toUpperCase())];
+  const base = { k: d.k, b: d.b, c: '加密', t: d.t, tg, v: [d.src[0]], src: d.src, id: `${d.k}|${d.b}|${d.t}|${d.src[0]}` };
+  if (d.k === 'gplan') return { ...base, lim: d.lim, sl: d.sl };
+  return { ...base, ...(d.peak > 0 ? { pk: d.peak } : {}) };
 }
+
+/**
+ * 掛單方案的結果：從 start 那根 1H 開始，limitH 根內最高價碰到 lim 就算在 lim 成交（同一根先碰到停損算沒成交）；
+ * 成交後下一根起，碰停損（跳空用開盤價）出場，否則第 holdH 根收盤平倉；扣成本。
+ * 回傳 [R, '未成交'|'停損'|'到期'] 或 null（K 線還不夠／中間有缺）
+ */
+export function simPlan(lim, sl, bars, start, cfg = PLAN, cost = COST) {
+  if (!(lim > 0 && sl > lim)) return null;
+  const at = i => bars.get(start + i * H);
+  let f = -1;
+  for (let i = 0; i < cfg.limitH; i++) {
+    const b = at(i);
+    if (!b) return null;
+    if (b[2] >= sl) return [0, '未成交'];
+    if (b[2] >= lim) { f = i; break; }
+  }
+  if (f < 0) return [0, '未成交'];
+  const risk = (sl - lim) / lim;
+  for (let i = f + 1; i <= f + cfg.holdH; i++) {
+    const b = at(i);
+    if (!b) return null;
+    if (b[2] >= sl) { const px = Math.max(sl, b[1]); return [Math.round(((lim - px) / lim - cost) / risk * 100) / 100, '停損']; }
+    if (i === f + cfg.holdH) return [Math.round(((lim - b[4]) / lim - cost) / risk * 100) / 100, '到期'];
+  }
+  return null;
+}
+/** 掛單方案最晚要等到訊號後幾小時才會有結果 */
+export const planDueH = (cfg = PLAN) => cfg.limitH + cfg.holdH;
 
 /** 發送紀錄的行（已 JSON.parse）→ 依 run 分組；只收發送成功的 */
 export function groupRuns(lines) {
@@ -236,6 +273,11 @@ export function fill(rec, bars, bench, now) {
     const sim = path.length ? simRule(-1, rec.e, rec.pk, path) : null;
     if (sim) { rec.rr = [sim.r, sim.why]; changed = true; }
   }
+  /* 掛單方案（gplan）：掛單期＋持有期的 K 線都到了才算一次 */
+  if (rec.k === 'gplan' && !rec.pr && rec.st != null && now >= rec.st + planDueH() * H) {
+    const pr = simPlan(rec.lim, rec.sl, bars, rec.st);
+    if (pr) { rec.pr = pr; changed = true; }
+  }
   return changed;
 }
 
@@ -262,7 +304,9 @@ export function regimeFn(btc1h) {
 }
 export const REGIME_KINDS = ['hourly', 'est', 'pre', 'dormant', 'rate', 'cross', 'crossd'];
 /** 72h 補完，或過了 84 小時（資料缺口）就結案 */
-export const isDone = (rec, now) => !!(rec.m && rec.m[72]) || now - rec.t > 84 * H;
+export const isDone = (rec, now) => rec.k === 'gplan'
+  ? !!(rec.pr && rec.m && rec.m[72]) || now - rec.t > (planDueH() + 12) * H
+  : !!(rec.m && rec.m[72]) || now - rec.t > 84 * H;
 
 /* ---------------- 統計 ---------------- */
 const r2 = v => v == null || !isFinite(v) ? null : Math.round(v * 1e4) / 100;   /* 比例 → 百分比 2 位 */
@@ -384,7 +428,16 @@ export function summarize(recs, now) {
       const g = rs.filter(r => (of ? of(r) : r.k === k) && r.rr);
       if (g.length) rule.push({ k, ...ruleStats(g.map(r => r.rr[0])) });
     }
-    win[key] = { n: rs.length, kinds, feats, marks, shapes, regime, rule };
+    /* 掛單方案：成交率與成交後的 R（沒成交不算進 R） */
+    const plan = [];
+    for (const k of ['gplanp', 'gplan']) {
+      const of = KINDS[k].of;
+      const g = rs.filter(r => (of ? of(r) : r.k === k) && r.pr);
+      if (!g.length) continue;
+      const fl = g.filter(r => r.pr[1] !== '未成交');
+      plan.push({ k, sig: g.length, fill: Math.round(fl.length / g.length * 1000) / 10, stop: fl.filter(r => r.pr[1] === '停損').length, ...ruleStats(fl.map(r => r.pr[0])) });
+    }
+    win[key] = { n: rs.length, kinds, feats, marks, shapes, regime, rule, plan };
   }
   const recent = recs.filter(r => r.m && r.m[4]).sort((a, b) => b.t - a.t).slice(0, 120).map(r => ({
     k: r.k, b: r.b, c: r.c, t: r.t, v: (r.v || [])[0] || null, x: r.x ?? r.xs ?? null, ch: r.ch ?? null, tg: (r.tg || []).filter(x => x !== '自選').slice(0, 3), w: (r.tg || []).includes('自選') ? 1 : 0,
@@ -406,7 +459,7 @@ export function renderMd(sum) {
   L.push('## 各訊號（全部期間，持有 24 小時）', '', '| 訊號 | 類別 | 筆數 | 獨立時段 | 平均 | 中位數 | 勝率 | 超額 | 反向做空 | 前後一致 |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---|');
   for (const r of w.kinds) {
     const s = r.h[24];
-    if (!s.n || ['gnew', 'gnewp', 'gold', 'goldp'].includes(r.k)) continue;
+    if (!s.n || GK.includes(r.k)) continue;
     L.push(`| ${KINDS[r.k].l} | ${r.c} | ${s.n} | ${s.nh} | ${pct(s.avg)} | ${pct(s.med)} | ${s.win}% | ${pct(s.ex)} | ${pct(s.fd)} | ${r.cons[24] === 1 ? '都正' : r.cons[24] === -1 ? '都負' : r.cons[24] === 0 ? '不一致' : '樣本不足'} |`);
   }
   L.push('', '反向做空＝訊號價放空、10% 停損、到期平倉、扣成本的平均報酬。', '');
@@ -437,6 +490,12 @@ export function renderMd(sum) {
     L.push('## 大盤狀態（加密做多類，持有 72 小時；依訊號當時 BTC 4H EMA20／SMA30）', '', '| 訊號 | BTC 4H | 筆數 | 獨立時段 | 平均 | 勝率 | 超額 |', '|---|---|---:|---:|---:|---:|---:|');
     for (const x of w.regime) { const t = x.h[72]; if (t.n) L.push(`| ${KINDS[x.k].l} | ${x.rg === 'bull' ? '金叉中' : '死叉中'} | ${t.n} | ${t.nh} | ${pct(t.avg)} | ${t.win}% | ${pct(t.ex)} |`); }
     L.push('', '用來驗證「BTC 4H 死叉中不做多」有沒有用：金叉中明顯比死叉中好，才把它寫成規則。', '');
+  }
+  if (w.plan && w.plan.length) {
+    L.push('## 做空候選：4H 轉弱掛單方案（2026-11-20 起）', '', '| 範圍 | 訊號數 | 成交率 | 成交筆數 | 平均 | 中位數 | 勝率 | 碰停損 |', '|---|---:|---:|---:|---:|---:|---:|---:|');
+    const sg = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v}R`;
+    for (const x of w.plan) L.push(`| ${KINDS[x.k].l} | ${x.sig} | ${x.fill}% | ${x.n} | ${sg(x.avg)} | ${sg(x.med)} | ${x.n ? `${x.win}%` : '—'} | ${x.stop} |`);
+    L.push('', '限價空在 (4H 收盤＋被跌破的回檔低點) ÷ 2，掛 12 小時；停損＝近 12 根 1H 最高點；成交後 72 小時收盤平倉，扣 0.2% 成本。回測基準：成交率 85%、平均 +0.22R。', '');
   }
   if (w.rule && w.rule.length) {
     L.push('## 照規則交易：做空轉弱（2026-11-19 起）', '', '| 規則 | 筆數 | 平均 | 中位數 | 勝率 |', '|---|---:|---:|---:|---:|');

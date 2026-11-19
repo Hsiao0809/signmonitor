@@ -34,9 +34,9 @@ export function sizing(dir, entry, stop, risk) {
 }
 
 /** 一行下單卡文字（前面兩個空白，維持訊息原本的縮排格式）；算不出來回傳 '' */
-export function cardLine(dir, entry, stop, risk, extra = '') {
+export function cardLine(dir, entry, stop, risk, extra = '', opts = {}) {
   const s = sizing(dir, entry, stop, risk);
   if (!s) return '';
   const lev = s.lev > 1 ? `，需 ≥ ${Math.ceil(s.lev)} 倍，強平距離要 ≥ ${(s.stopPct * 2).toFixed(0)}%` : '，不需槓桿';
-  return `  下單卡｜停損 ${fmtP(stop)}（${s.stopPct.toFixed(1)}%）｜虧 ${usd(s.riskUsd)}U → 名目 ${usd(s.notional)}U${lev}｜2R ${fmtP(s.t2)} 平一半${extra}`;
+  return `  下單卡｜停損 ${fmtP(stop)}（${s.stopPct.toFixed(1)}%）｜虧 ${usd(s.riskUsd)}U → 名目 ${usd(s.notional)}U${lev}${opts.noT2 ? '' : `｜2R ${fmtP(s.t2)} 平一半`}${extra}`;
 }

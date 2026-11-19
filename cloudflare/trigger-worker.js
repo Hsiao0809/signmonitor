@@ -702,14 +702,16 @@ COLS.rate=function(){return [
   {k:'chg',l:'通知時 24h',n:1,s:function(e){return e.chg},v:function(e){return e.chg==null?'—':pc(e.chg)}},
   {k:'px',l:'現價',n:1,v:function(e){return FP('okx',LP('okx',e.ccy+'-USDT-SWAP'))}},
   {k:'aft',l:'之後',n:1,s:function(e){var p=LP('okx',e.ccy+'-USDT-SWAP');return p&&e.last?p/e.last-1:null},v:function(e){var p=LP('okx',e.ccy+'-USDT-SWAP');return p&&e.last?pc(p/e.last-1):'—'}}]};
-/* 做空候選：各交易所漲幅榜；轉弱才推播，勿空＝可能剛啟動的多方 */
+/* 做空候選：各交易所漲幅榜；11-20 起只推 4H 轉弱（成交額 ≥ 15M、沒有勿空）＋掛單方案，勿空＝可能剛啟動的多方 */
 var GVL={okx:'OKX',bitget:'Bitget',bybit:'Bybit',binance:'Binance 現貨'};
-var GTG={spike:['爆量','24 小時內爆量，可能剛啟動，勿空',1],wake:['沉睡甦醒','7 天內沉睡甦醒，勿空',1],layout:['布局','布局清單追蹤中，勿空',1],solo:['單家','只有單一交易所大漲',0],wide:['停損過寬','24h 高點離現價超過 10%：降槓桿、縮倉或放棄',1],noperp:['無合約','Binance 現貨榜，沒有合約不能做空',0],nok:['無K線','沒有 OKX／Bitget 合約，無法判斷轉弱',0]};
+var GWHY={'1h':'只有 1H 轉弱（只記網頁）',avoid:'勿空',thin:'成交額不足 15M',noplan:'停損位置不對'};
+var GTG={spike:['爆量','24 小時內爆量（11-20 起只標記，不算勿空）',0],wake:['沉睡甦醒','7 天內沉睡甦醒，勿空',1],layout:['布局','布局清單追蹤中，勿空',1],solo:['單家','只有單一交易所大漲',0],wide:['停損過寬','24h 高點離現價超過 10%：降槓桿、縮倉或放棄',1],noperp:['無合約','Binance 現貨榜，沒有合約不能做空',0],nok:['無K線','沒有 OKX／Bitget 合約，無法判斷轉弱',0]};
 function gTags(t){return (t||[]).map(function(k){var x=GTG[k];return x?(x[2]?'<span class="fl" title="'+esc(x[1])+'">'+x[0]+'</span>':'<span class="cat" title="'+esc(x[1])+'">'+x[0]+'</span>'):''}).join('')}
-function gAvoid(t){return (t||[]).some(function(k){return k==='spike'||k==='wake'||k==='layout'})}
+function gAvoid(t){return (t||[]).some(function(k){return k==='wake'||k==='layout'})}
 function gTv(o){return o.sv&&o.sid?tv(o.sv,o.sid,'60'):'https://www.tradingview.com/chart/?symbol='+encodeURIComponent('BINANCE:'+o.base+'USDT')+'&interval=60'}
 function gPx(o){return o.sv&&o.sid?LP(o.sv,o.sid):null}
-function gStop(o){var p=gPx(o)||o.px;return o.hi24&&p?(o.hi24/p-1)*100:null}
+function gHi(o){return o.hi12||o.hi24}
+function gStop(o){var p=gPx(o)||o.px,h=gHi(o);return h&&p?(h/p-1)*100:null}
 function gExTxt(ex){return Object.keys(ex||{}).map(function(v){var x=ex[v];return (GVL[v]||v)+' '+pc100(typeof x==='object'?x.chg:x).replace(/<[^>]*>/g,'')}).join('／')}
 function gWeak(o){var w=o.weak||{};return (w['4h']?2:0)+(w['1h']?1:0)}
 function gWeakTag(o){var w=o.weak||{},l=[w['4h']?'4H':'',w['1h']?'1H':''].filter(Boolean);return l.length?'<span class="badge bs" title="已收盤的最後一根 K 收盤跌破高點之後整段回檔的最低點，且最高點沒有再創">'+l.join('＋')+' 轉弱</span>':'<span class="cat">—</span>'}
@@ -718,17 +720,18 @@ COLS.gainer=function(){return [
   {k:'weak',l:'轉弱',s:gWeak,v:gWeakTag},
   {k:'chg',l:'24h 漲幅',n:1,s:function(o){return o.chgMax},v:function(o){return '<b>'+pc100(o.chgMax)+'</b>'},tt:function(o){return Object.keys(o.ex||{}).map(function(v){return (GVL[v]||v)+' '+o.ex[v].chg+'%（榜上第 '+o.ex[v].rank+'）'}).join('\\n')}},
   {k:'qv',l:'成交額',n:1,s:function(o){return o.qv},v:function(o){return money(o.qv)}},
-  {k:'stop',l:'停損距離',h:'以 24h 高點當停損，離現價多遠；超過 10% 5 倍槓桿幾乎貼著強平線',n:1,s:gStop,v:function(o){var d=gStop(o);return d==null?'—':fp(o.hi24)+' <span class="'+(d>10?'wtxt':'cat')+'">'+d.toFixed(1)+'%</span>'}},
+  {k:'stop',l:'停損距離',h:'以近 12 根 1H 最高點當停損，離現價多遠；倉位＝願意虧的錢 ÷ 這個距離',n:1,s:gStop,v:function(o){var d=gStop(o);return d==null?'—':fp(gHi(o))+' <span class="cat">'+d.toFixed(1)+'%</span>'}},
   {k:'px',l:'現價',n:1,v:function(o){return o.sv?FP(o.sv,gPx(o)):'—'}},
   {k:'since',l:'上榜',s:function(o){return o.since},v:function(o){return tpe(o.since)}},
   {k:'ven',l:'榜單',dd:1,s:function(o){return Object.keys(o.ex||{}).length},v:function(o){return Object.keys(o.ex||{}).map(function(v){var x=o.ex[v];return '<span class="badge'+(x.hot?'':' cat')+'" title="'+esc((GVL[v]||v)+' 24h '+x.chg+'%')+'">'+(GVL[v]||v)+(x.hot?' #'+x.rank:'')+'</span>'}).join(' ')}}]};
 COLS.gevt=function(){return [
   {k:'base',l:'代號',dd:1,s:function(e){return e.base},v:function(e){return '<div class="c0w">'+link(e.base,gTv(e))+gTags(e.tags)+(inWatch(e.base)?'<span class="star" title="已在自選">★</span>':WA(e.base))+'</div>'}},
   {k:'t',l:'時間',s:function(e){return e.t},v:function(e){return tpe(e.t)}},
-  {k:'tf',l:'週期',v:function(e){return '<span class="badge bs">'+e.tfs.map(function(t){return t.toUpperCase()}).join('＋')+' 轉弱</span>'+(e.rule==='range'?'':'<span class="cat" title="2026-11-13 前的舊規則：跌破前一根最低點">舊規則</span>')+(e.muted?'<span class="fl" title="有勿空標籤，只記在網頁、沒有推播">未推播</span>':'')}},
+  {k:'tf',l:'週期',v:function(e){return '<span class="badge bs">'+e.tfs.map(function(t){return t.toUpperCase()}).join('＋')+' 轉弱</span>'+(e.rule==='range'?'':'<span class="cat" title="2026-11-13 前的舊規則：跌破前一根最低點">舊規則</span>')+(e.muted?'<span class="fl" title="'+esc(GWHY[e.why]||'有勿空標籤')+'，只記在網頁、沒有推播">未推播'+(e.why&&e.why!=='avoid'?'・'+esc({'1h':'1H',thin:'量少',noplan:'停損'}[e.why]||''):'')+'</span>':'')}},
+  {k:'lim',l:'掛單',h:'4H 轉弱的掛單方案：限價空在收盤與跌破價的中間，掛 12 小時沒成交就撤；成交後持有 72 小時',n:1,s:function(e){return e.lim||null},v:function(e){return e.lim?fp(e.lim)+' <span class="cat">至 '+tpe(e.exp).slice(-5)+'</span>':'—'}},
   {k:'chg',l:'24h 漲幅',n:1,s:function(e){return e.chg},v:function(e){return pc100(e.chg)},tt:function(e){return gExTxt(e.ex)}},
   {k:'drop',l:'自高點',n:1,s:function(e){return e.drop},v:function(e){return '-'+e.drop+'%'}},
-  {k:'stop',l:'停損距離',h:'通知當下，24h 高點離現價的距離',n:1,s:function(e){return e.stop},v:function(e){return e.stop==null?'—':fp(e.hi24)+' <span class="'+(e.stop>10?'wtxt':'cat')+'">'+e.stop+'%</span>'}},
+  {k:'stop',l:'停損',h:'有掛單方案：近 12 根 1H 最高點與距掛單價的距離；舊紀錄：24h 高點離現價的距離',n:1,s:function(e){return e.slPct!=null?e.slPct:e.stop},v:function(e){return e.sl?fp(e.sl)+' <span class="cat">'+e.slPct+'%</span>':e.stop==null?'—':fp(e.hi24)+' <span class="cat">'+e.stop+'%</span>'}},
   {k:'price',l:'通知價',n:1,v:function(e){return fp(e.price)}},
   {k:'px',l:'現價',n:1,v:function(e){return e.sv?FP(e.sv,gPx(e)):'—'}},
   {k:'aft',l:'之後（做空）',h:'通知價到現價：正的＝跌了（做空賺）',n:1,s:function(e){var p=gPx(e);return p&&e.price?1-p/e.price:null},v:function(e){var p=gPx(e);return p&&e.price?pc(1-p/e.price):'—'}}]};
@@ -1023,7 +1026,7 @@ function rate(){
 function gainer(){
   var g=D.gainer;if(!g){CNT=null;return '<div class="empty">還沒有做空候選資料（下一個整點跑完後出現）</div>'}
   var f=F.gainer,P=function(o){return pass(f,{base:o.base,cat:o.cat||'crypto',vens:Object.keys(o.ex||{}),watch:inWatch(o.base)})};
-  var c=g.counts||{},meta='<div class="meta">各交易所 24h 漲幅榜：任一家排前 20、漲幅 ≥ 30%、成交額 ≥ 50 萬 USDT 就列入。漲幅高只是名單，不是進場訊號；<b>轉弱</b>＝已收盤的最後一根 K 收盤跌破<b>高點之後整段回檔的最低點</b>，且最高點沒有再創（1H 看近 24 根、4H 看近 12 根；高點之後至少要有一根已收盤的 K），轉弱才推播。舊規則（跌破前一根最低點）11-13 起停推，新舊並行記到「成績」比較。<span class="fl">勿空</span>＝24 小時內爆量、7 天內沉睡甦醒或布局清單追蹤中，可能是剛啟動的多方；名單照列，這類轉弱只記在轉弱紀錄（標「未推播」），不推播。轉弱只用 OKX、Bitget 的 K 線（Bybit 的 K 線擋雲端）。沒有回測。最近一次：'+(g.lastHour?tpe(g.lastHour):'—')+'（OKX '+(c.okx||0)+'、Bitget '+(c.bitget||0)+'、Bybit '+(c.bybit||0)+'、Binance 現貨 '+(c.binance||0)+' 檔）。</div>';
+  var c=g.counts||{},meta='<div class="meta">各交易所 24h 漲幅榜：任一家排前 20、漲幅 ≥ 30%、成交額 ≥ 50 萬 USDT 就列入。漲幅高只是名單，不是進場訊號；<b>轉弱</b>＝已收盤的最後一根 K 收盤跌破<b>高點之後整段回檔的最低點</b>，且最高點沒有再創（1H 看近 24 根、4H 看近 12 根）。<b>11-20 起只推 4H 轉弱</b>，且 24h 成交額 ≥ 15M、沒有勿空；推播附<b>掛單方案</b>：限價空在收盤與跌破價的中間，掛 12 小時沒成交就撤，停損＝近 12 根 1H 最高點，成交後持有 72 小時（11-19 回測平均 +0.22R、成交率 85%）。1H 轉弱與其他沒推的只記在轉弱紀錄（標「未推播」）。<span class="fl">勿空</span>＝7 天內沉睡甦醒或布局清單追蹤中；24 小時內爆量只標記。轉弱只用 OKX、Bitget 的 K 線。最近一次：'+(g.lastHour?tpe(g.lastHour):'—')+'（OKX '+(c.okx||0)+'、Bitget '+(c.bitget||0)+'、Bybit '+(c.bybit||0)+'、Binance 現貨 '+(c.binance||0)+' 檔）。</div>';
   if(f.pane==='evt'){var el=g.events.filter(function(e){return P(e)&&(!f.avoid||!gAvoid(e.tags))});CNT=[el.length,g.events.length];
     return '<div class="vs">'+meta+panel('轉弱紀錄 <small>保留 7 天</small>',table('gevt',el,COLS.gevt(),'還沒有轉弱紀錄'),'grow')+'</div>'}
   var list=g.items.filter(function(o){return P(o)&&(!f.weak||gWeak(o))&&(!f.avoid||!gAvoid(o.tags))});CNT=[list.length,g.items.length];
@@ -1032,7 +1035,7 @@ function gainer(){
 /* ---------- 自選 ---------- */
 var VC={};
 /* ---------- 訊號成績：每筆訊號之後 4／24／72 小時的實際走勢（src/score.mjs） ---------- */
-var SCK={hourly:'盤中爆量',est:'盤中推算',pre:'預警',dormant:'沉睡甦醒',rate:'借幣利率',cross:'4H 金叉',crossd:'日線金叉',gainer:'做空候選轉弱',gnew:'轉弱・新規則（全部）',gnewp:'轉弱・新規則（排除勿空＝實際推播）',gold:'轉弱・舊規則（全部）',goldp:'轉弱・舊規則（排除勿空）'},SCC={'加密':'crypto','股票':'stock','商品':'comm'};
+var SCK={hourly:'盤中爆量',est:'盤中推算',pre:'預警',dormant:'沉睡甦醒',rate:'借幣利率',cross:'4H 金叉',crossd:'日線金叉',gainer:'做空候選轉弱',gnew:'轉弱・新規則（全部）',gnewp:'轉弱・新規則（排除勿空＝實際推播）',gold:'轉弱・舊規則（全部）',goldp:'轉弱・舊規則（排除勿空）',gplan:'4H 轉弱掛單方案（全部）',gplanp:'4H 轉弱掛單方案（實際推播）'},SCC={'加密':'crypto','股票':'stock','商品':'comm'};
 var SC=lsg('sm_sc',{w:'all',h:'24'});if(!/^(7|30|all)$/.test(SC.w))SC.w='all';if(!/^(4|24|72)$/.test(SC.h))SC.h='24';
 function scSeg(k,opts){return '<span class="seg">'+opts.map(function(o){return '<button data-sc="'+k+'" data-v="'+o[0]+'" class="'+(SC[k]===o[0]?'on':'')+'">'+o[1]+'</button>'}).join('')+'</span>'}
 /* 樣本不足（<30 筆）的數字灰字 */
@@ -1047,7 +1050,7 @@ function score(){
   var ctl='<div class="fb">'+scSeg('w',[['7','近 7 天'],['30','近 30 天'],['all','全部']])+scSeg('h',[['4','持有 4h'],['24','24h'],['72','72h']])+'<span class="cnt">'+X.total+' 筆，更新 '+tpe(X.at)+'</span></div>';
   var meta='<div class="meta">把每則推播裡的訊號補上之後的實際走勢（紀錄起點 '+(X.first?tpe(X.first):'—')+'）。進場＝訊號那根 1H K 收盤價（盤中推算用推播的價格）；報酬以<b>做多</b>計算，做空候選以做空計算。<b>超額</b>＝減掉同時段 BTC（加密）或 QQQ（股票），正的才代表訊號本身比大盤好；勝率扣 0.2% 成本。<b>前後一致</b>＝把這段期間分成前後兩半，超額同方向才算（每半至少 15 筆）。<b>反向做空</b>＝訊號價放空、10% 停損、到期平倉、扣成本的平均報酬。<b>獨立時段</b>＝同一小時多檔一起爆量只算一次，數字小代表其實只是少數幾次大盤事件。灰字＝樣本少於 30 筆。只統計已發生的走勢，一兩週的資料很容易只是那段行情的特性。</div>';
   var kr=W.kinds.filter(function(r){return r.h[h]&&r.h[h].n});
-  var kc=[{l:'訊號',v:function(r){return '<div class="c0w"><b>'+SCK[r.k]+'</b>'+CT(SCC[r.c])+(/^(gainer|gnew|gnewp|gold|goldp)$/.test(r.k)?'<span class="cat">做空</span>':'')+'</div>'}},
+  var kc=[{l:'訊號',v:function(r){return '<div class="c0w"><b>'+SCK[r.k]+'</b>'+CT(SCC[r.c])+(/^(gainer|gnew|gnewp|gold|goldp|gplan|gplanp)$/.test(r.k)?'<span class="cat">做空</span>':'')+'</div>'}},
     {l:'筆數',n:1,v:function(r){return scN(r.h[h])}},
     {l:'平均',n:1,v:function(r){return scV(r.h[h],r.h[h].avg)}},
     {l:'中位數',n:1,v:function(r){return scV(r.h[h],r.h[h].med)}},
@@ -1091,7 +1094,17 @@ function score(){
     {l:'勝率',n:1,v:function(x){return scW(x.h[h])}},
     {l:'期間最大有利',ml:'最大有利',n:1,m:1,v:function(x){return scV(x.h[h],x.h[h].up)}},
     {l:'期間最大不利',ml:'最大不利',n:1,v:function(x){return scV(x.h[h],x.h[h].dn)}}];
+  var pl=W.plan||[],sgR=function(v){return v==null?'—':rr(v)};
+  var plc=[{l:'範圍',v:function(x){return '<b>'+SCK[x.k]+'</b>'}},
+    {l:'訊號數',n:1,v:function(x){return String(x.sig)}},
+    {l:'成交率',n:1,h:'掛單 12 小時內成交的比例；回測 85%',v:function(x){return x.fill.toFixed(0)+'%'}},
+    {l:'成交筆數',ml:'成交',n:1,v:function(x){return x.n>=30?String(x.n):'<span class="cat">'+x.n+'</span>'}},
+    {l:'平均',n:1,h:'成交後的平均 R；回測 +0.22R',v:function(x){return sgR(x.avg)}},
+    {l:'中位數',n:1,m:1,v:function(x){return sgR(x.med)}},
+    {l:'勝率',n:1,v:function(x){return x.n?x.win.toFixed(0)+'%':'—'}},
+    {l:'碰停損',n:1,m:1,v:function(x){return String(x.stop)}}];
   return ctl+'<div class="vs">'+meta+
+    panel('做空候選：4H 轉弱掛單方案 <small>11-20 起；限價空在收盤與跌破價的中間、掛 12h、停損近 12 根 1H 高點、成交後 72h 平倉。時間範圍跟上面的按鈕，跟持有時間無關</small>',table('scp',pl,plc,'還沒有結果（訊號後 84 小時才有）'),'fix')+
     panel('爆發標記 <small>加密的盤中爆量／推算／預警，11-13 起；回測時候選約 3 成、可略過約 1%、一般約 1 成多</small>',table('scm',mk,mc,'還沒有結果（標記上線後 '+h+' 小時才有）'),'fix')+
     panel('結構標記 <small>盤中爆量／推算／預警，11-15 起；這根 1H 相對前 7 天高低點的位置</small>',table('scs',sk,sc2,'還沒有結果（標記上線後 '+h+' 小時才有）'),'fix')+
     panel('各訊號成績 <small>'+({'7':'近 7 天','30':'近 30 天',all:'全部'})[SC.w]+'，持有 '+h+' 小時</small>',table('sck',kr,kc,'這段期間還沒有結果'),'fix')+
