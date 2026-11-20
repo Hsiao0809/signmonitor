@@ -7,3 +7,7 @@
 {"t":1795161600000,"k":"gnew","b":"SNDK","key":"SNDK","tfs":["4h"],"c":89.05,"brk":91.74,"peak":848,"avoid":0,"tags":["spike","solo"],"src":["okx","SNDK-USDT-SWAP"]}
 {"t":1795161600000,"k":"gold","b":"SNDK","key":"SNDK","tfs":["4h"],"c":89.05,"brk":91.74,"peak":848,"avoid":0,"tags":["spike","solo"],"src":["okx","SNDK-USDT-SWAP"]}
 {"t":1795161600000,"k":"gplan","b":"SNDK","key":"SNDK","tfs":["4h"],"c":89.05,"brk":91.74,"peak":848,"lim":90.395,"sl":770.87,"qv":1058261436,"push":1,"avoid":0,"tags":["spike","solo"],"src":["okx","SNDK-USDT-SWAP"]}
+{"t":1795172400000,"k":"gnew","b":"MMT","key":"MMT","tfs":["4h"],"c":0.2421,"brk":0.2522,"peak":0.3179,"avoid":0,"tags":["spike"],"src":["okx","MMT-USDT-SWAP"]}
+{"t":1795172400000,"k":"gold","b":"MMT","key":"MMT","tfs":["4h"],"c":0.2421,"brk":0.2522,"peak":0.3179,"avoid":0,"tags":["spike"],"src":["okx","MMT-USDT-SWAP"]}
+{"t":1795172400000,"k":"gplan","b":"MMT","key":"MMT","tfs":["4h"],"c":0.2421,"brk":0.2522,"peak":0.3179,"lim":0.24715,"sl":0.2813,"qv":253071081,"push":1,"avoid":0,"tags":["spike"],"src":["okx","MMT-USDT-SWAP"]}
+{"t":1795172400000,"k":"gold","b":"CYBER","key":"CYBER","tfs":["1h"],"c":0.2622,"brk":0.2676,"peak":0.2942,"avoid":0,"tags":["spike"],"src":["bitget","CYBERUSDT"]}
