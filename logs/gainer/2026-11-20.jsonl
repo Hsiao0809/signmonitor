@@ -1,3 +1,4 @@
 {"t":1795118400000,"k":"gold","b":"BITO","key":"BITO","tfs":["1h"],"c":16.467,"brk":16.529,"peak":17.116,"avoid":1,"tags":["spike","layout","solo"],"src":["bitget","BITOUSDT"]}
 {"t":1795125600000,"k":"gnew","b":"BITO","key":"BITO","tfs":["1h"],"c":16.208,"brk":16.216,"peak":17.116,"avoid":1,"tags":["spike","layout","solo"],"src":["bitget","BITOUSDT"]}
 {"t":1795125600000,"k":"gold","b":"NAORIS","key":"NAORIS","tfs":["1h"],"c":0.02995,"brk":0.03265,"peak":0.03921,"avoid":1,"tags":["spike","wide"],"src":["bitget","NAORISUSDT"]}
+{"t":1795132800000,"k":"gold","b":"NAORIS","key":"NAORIS","tfs":["4h"],"c":0.03022,"brk":0.03182,"peak":0.03921,"avoid":0,"tags":["spike"],"src":["bitget","NAORISUSDT"]}
