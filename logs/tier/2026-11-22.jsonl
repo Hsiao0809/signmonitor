@@ -1,1 +1,2 @@
 {"time":"2026-11-22T00:00+08:00","run":"44921356396","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":516},{"k":"events","chars":1092}],"deferred":[],"muted":[{"k":"pre","chars":1609}],"resonance":[],"digest":[],"pending":3}
+{"time":"2026-11-22T01:00+08:00","run":"44926801213","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":385}],"deferred":[],"muted":[{"k":"pre","chars":1433}],"resonance":[],"digest":[],"pending":3}
