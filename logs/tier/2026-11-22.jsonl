@@ -14,3 +14,4 @@
 {"time":"2026-11-22T11:00+08:00","run":"44977956114","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":545},{"k":"dormant","chars":362}],"deferred":[],"muted":[{"k":"quiet","chars":254},{"k":"pre","chars":1766}],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-22T12:00+08:00","run":"44982462378","mode":"tiered","sent":"tiered","immediate":[{"k":"events","chars":294}],"deferred":[],"muted":[{"k":"pre","chars":1637}],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-22T13:00+08:00","run":"44986837641","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":346}],"deferred":[],"muted":[{"k":"quiet","chars":249},{"k":"pre","chars":1835}],"resonance":[],"digest":[],"pending":3}
+{"time":"2026-11-22T14:00+08:00","run":"44991152641","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":569}],"deferred":[],"muted":[{"k":"pre","chars":1762}],"resonance":[],"digest":[],"pending":3}
