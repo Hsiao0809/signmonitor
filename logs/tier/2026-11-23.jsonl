@@ -3,3 +3,4 @@
 {"time":"2026-11-23T01:25+08:00","run":"45049366793","mode":"tiered","sent":"tiered","immediate":[],"deferred":[],"muted":[],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-23T02:00+08:00","run":"45051733377","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":486}],"deferred":[],"muted":[{"k":"pre","chars":1729}],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-23T03:00+08:00","run":"45057393077","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":1419}],"deferred":[],"muted":[{"k":"quiet","chars":239},{"k":"pre","chars":1779}],"resonance":[],"digest":[],"pending":3}
+{"time":"2026-11-23T04:00+08:00","run":"45063069363","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":510}],"deferred":[],"muted":[{"k":"quiet","chars":249},{"k":"pre","chars":817}],"resonance":[],"digest":[],"pending":3}
