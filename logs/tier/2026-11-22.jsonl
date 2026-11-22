@@ -23,3 +23,4 @@
 {"time":"2026-11-22T20:00+08:00","run":"45019319672","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":1080}],"deferred":[],"muted":[{"k":"quiet","chars":402},{"k":"pre","chars":987}],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-22T21:00+08:00","run":"45024400725","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":1454},{"k":"rate","chars":313}],"deferred":[],"muted":[{"k":"quiet","chars":390},{"k":"pre","chars":1734}],"resonance":[],"digest":[],"pending":3}
 {"time":"2026-11-22T22:00+08:00","run":"45029635598","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":777}],"deferred":[],"muted":[{"k":"quiet","chars":385},{"k":"pre","chars":1583}],"resonance":[],"digest":[],"pending":3}
+{"time":"2026-11-22T23:00+08:00","run":"45035043203","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":320}],"deferred":[],"muted":[{"k":"pre","chars":1772}],"resonance":[],"digest":[],"pending":3}
