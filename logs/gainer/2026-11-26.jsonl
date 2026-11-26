@@ -8,3 +8,4 @@
 {"t":1795665600000,"k":"gold","b":"BIGTIME","key":"BIGTIME","tfs":["4h","1h"],"c":0.005797,"brk":0.006335,"peak":0.007197,"avoid":1,"tags":["spike","wake"],"src":["bitget","BIGTIMEUSDT"]}
 {"t":1795665600000,"k":"gplan","b":"BIGTIME","key":"BIGTIME","tfs":["4h"],"c":0.005797,"brk":0.005947,"peak":0.007197,"lim":0.005872,"sl":0.007162,"qv":146222662,"push":0,"avoid":1,"tags":["spike","wake"],"src":["bitget","BIGTIMEUSDT"]}
 {"t":1795672800000,"k":"gold","b":"ELSA","key":"ELSA","tfs":["1h"],"c":0.10099,"brk":0.107,"peak":0.11863,"avoid":0,"tags":["spike"],"src":["bitget","ELSAUSDT"]}
+{"t":1795680000000,"k":"gold","b":"NES","key":"NES","tfs":["1h"],"c":0.2366,"brk":0.2395,"peak":0.2573,"avoid":0,"tags":["spike"],"src":["okx","NES-USDT-SWAP"]}
