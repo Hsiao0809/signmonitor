@@ -1,2 +1,9 @@
 {"t":1795651200000,"k":"gold","b":"MANTRA","key":"MANTRA","tfs":["1h"],"c":0.003205,"brk":0.00325,"peak":0.003721,"avoid":0,"tags":["spike"],"src":["bitget","MANTRAUSDT"]}
 {"t":1795658400000,"k":"gnew","b":"MANTRA","key":"MANTRA","tfs":["1h"],"c":0.003087,"brk":0.00312,"peak":0.003721,"avoid":0,"tags":["spike"],"src":["bitget","MANTRAUSDT"]}
+{"t":1795665600000,"k":"gold","b":"MANTRA","key":"MANTRA","tfs":["4h"],"c":0.002643,"brk":0.003048,"peak":0.003721,"avoid":0,"tags":["spike"],"src":["bitget","MANTRAUSDT"]}
+{"t":1795665600000,"k":"gnew","b":"MOVE","key":"MOVE","tfs":["1h"],"c":0.005767,"brk":0.006001,"peak":0.006777,"avoid":1,"tags":["spike","wake"],"src":["okx","MOVE-USDT-SWAP"]}
+{"t":1795665600000,"k":"gold","b":"MOVE","key":"MOVE","tfs":["1h"],"c":0.005767,"brk":0.006001,"peak":0.006777,"avoid":1,"tags":["spike","wake"],"src":["okx","MOVE-USDT-SWAP"]}
+{"t":1795665600000,"k":"gold","b":"MMT","key":"MMT","tfs":["1h"],"c":0.3009,"brk":0.3112,"peak":0.3282,"avoid":0,"tags":["spike"],"src":["okx","MMT-USDT-SWAP"]}
+{"t":1795665600000,"k":"gnew","b":"BIGTIME","key":"BIGTIME","tfs":["4h","1h"],"c":0.005797,"brk":0.005947,"peak":0.007197,"avoid":1,"tags":["spike","wake"],"src":["bitget","BIGTIMEUSDT"]}
+{"t":1795665600000,"k":"gold","b":"BIGTIME","key":"BIGTIME","tfs":["4h","1h"],"c":0.005797,"brk":0.006335,"peak":0.007197,"avoid":1,"tags":["spike","wake"],"src":["bitget","BIGTIMEUSDT"]}
+{"t":1795665600000,"k":"gplan","b":"BIGTIME","key":"BIGTIME","tfs":["4h"],"c":0.005797,"brk":0.005947,"peak":0.007197,"lim":0.005872,"sl":0.007162,"qv":146222662,"push":0,"avoid":1,"tags":["spike","wake"],"src":["bitget","BIGTIMEUSDT"]}
