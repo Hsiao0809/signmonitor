@@ -1,0 +1,1 @@
+{"time":"2026-11-28T00:00+08:00","run":"46028518408","mode":"tiered","sent":"tiered","immediate":[{"k":"hourly","chars":3809},{"k":"rate","chars":303},{"k":"cross","chars":456},{"k":"events","chars":597}],"deferred":[],"muted":[{"k":"quiet","chars":526},{"k":"pre","chars":1695}],"resonance":[],"digest":[],"pending":3}
