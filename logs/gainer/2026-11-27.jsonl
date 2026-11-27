@@ -4,3 +4,4 @@
 {"t":1795766400000,"k":"gnew","b":"INIT","key":"INIT","tfs":["4h"],"c":0.11784,"brk":0.13069,"peak":0.14656,"avoid":0,"tags":["spike"],"src":["okx","INIT-USDT-SWAP"]}
 {"t":1795766400000,"k":"gold","b":"INIT","key":"INIT","tfs":["4h"],"c":0.11784,"brk":0.13069,"peak":0.14656,"avoid":0,"tags":["spike"],"src":["okx","INIT-USDT-SWAP"]}
 {"t":1795766400000,"k":"gplan","b":"INIT","key":"INIT","tfs":["4h"],"c":0.11784,"brk":0.13069,"peak":0.14656,"lim":0.124265,"sl":0.14656,"qv":115696174,"push":1,"avoid":0,"tags":["spike"],"src":["okx","INIT-USDT-SWAP"]}
+{"t":1795777200000,"k":"gold","b":"HAEDAL","key":"HAEDAL","tfs":["1h"],"c":0.02419,"brk":0.02474,"peak":0.02924,"avoid":0,"tags":["spike"],"src":["bitget","HAEDALUSDT"]}
