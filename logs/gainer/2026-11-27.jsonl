@@ -1,1 +1,3 @@
 {"t":1795708800000,"k":"gnew","b":"NES","key":"NES","tfs":["1h"],"c":0.245,"brk":0.2536,"peak":0.277,"avoid":0,"tags":["spike"],"src":["okx","NES-USDT-SWAP"]}
+{"t":1795741200000,"k":"gnew","b":"INIT","key":"INIT","tfs":["1h"],"c":0.13554,"brk":0.13562,"peak":0.14656,"avoid":0,"tags":["spike"],"src":["okx","INIT-USDT-SWAP"]}
+{"t":1795741200000,"k":"gold","b":"INIT","key":"INIT","tfs":["1h"],"c":0.13554,"brk":0.13562,"peak":0.14656,"avoid":0,"tags":["spike"],"src":["okx","INIT-USDT-SWAP"]}
